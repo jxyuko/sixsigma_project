@@ -34,8 +34,8 @@ Code and results come first. A user interface comes later and must call the same
 4. Constant hazard (exponential): R(t) = exp(-lambda t).
 5. Series system: lambda_sys = sum(qty_i * lambda_i); B0.1 = -ln(0.999) / lambda_sys.
 6. Uncertainty and financial confidence intervals: parametric Monte Carlo (5,000 draws, common random
-   numbers for A vs B), following the course's `qi()` pattern in `timothyfraser/sysen`
-   code/ZZ_financial_analysis.py.
+   numbers for A vs B), following the course's `qi()` pattern in the class financial-analysis
+   example.
 
 ## Rules
 
@@ -49,8 +49,8 @@ Code and results come first. A user interface comes later and must call the same
 - **Never edit `data/raw/`.** Cleaning code writes to `data/`, and a codebook documents every column.
 - Never invent data and present it as real. Assumed values (thermal profile, quantity per vehicle,
   warranty hours, cost per failure) are labelled as assumptions, with a source where one exists.
-- Course material (`timothyfraser/sysen`) may be used and cited. Never add its author as a
-  contributor or co-author.
+- Course material may be used for ideas. Never name its author in the repo, and never add them as
+  a contributor or co-author.
 - Stage explicit paths (`git add <files>`, never `-A` or `.`). Commit or push only when asked.
 
 ## Known data issues in parameter_table.xlsx
