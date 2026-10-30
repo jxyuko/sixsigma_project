@@ -3,27 +3,39 @@
 SYSEN 5300 (Cornell, Fall 2026) Six Sigma project. Team: Alpomer Tolga Aksit, Luis Luna,
 Janset Erdenbil. See [`README.md`](README.md) for the folder layout and setup.
 
+**Read [`ROADMAP.md`](ROADMAP.md) first, every session.** It is the single source of truth for the
+approach, assumptions (A#), equations (E#), validation tests, build order and data issues.
+Every commit that changes the method, an assumption, a number or the code structure must also
+update ROADMAP.md and add a line to its Changelog. Cite A#/E# numbers in code comments.
+
 ## What we are building
 
-An accelerated-life reliability simulator for six EV electronic components: ECU MCU, BMS AFE,
-digital isolator, temperature sensor, gate driver and current sensor. It takes each
-supplier's published HTOL test data and puts every part on a common basis under user-defined
-thermal conditions. It reports component FIT/MTTF, series-system reliability, B0.1 life, the
-ratio of B0.1 to the warranty period, and the % change in B0.1 when suppliers are swapped.
+A Monte Carlo accelerated-life reliability simulator for six EV electronic component slots: ECU
+MCU, BMS AFE, digital isolator, temperature sensor, gate driver and current sensor. The library
+of supplier HTOL test data comes from `parameter_table.xlsx`. The user gives an operating
+temperature (or a profile) and fills 1–6 slots.
+- **Mode 1, `evaluate()`:** component and system FIT, MTTF, R(t), B0.1, warranty ratio and
+  P(meets warranty), with 95% CIs.
+- **Mode 2, `compare()`:** two configurations, their differences and P(B outlasts A).
+
+The simulator is validated against supplier, handbook and field results (ROADMAP Section 11).
 
 Code and results come first. A user interface comes later and must call the same functions.
 
 ## Method (state it this way in code comments and reports)
 
 1. Arrhenius AF = exp[(Ea/k)(1/T_use - 1/T_test)], with T in Kelvin and k = 8.617333e-5 eV/K.
-2. Upper-bound failure rate: lambda = chi2.ppf(CL, 2f+2) / (2 * n * t_test * AF); FIT = lambda * 1e9.
-   Recompute from raw test data; the published FIT is only a cross-check.
-3. Thermal profile: average the failure rates, not the AFs: lambda_use = lambda_test * sum(w_i / AF_i).
-   This is the Arrhenius average temperature of Tencer et al. (2004).
+2. Failure rate as a distribution: lambda ~ Gamma(f+1, rate = n * t_test * AF). Its 60th percentile
+   is the supplier chi-square bound chi2.ppf(CL, 2f+2) / (2 * n * t_test * AF); FIT = lambda * 1e9.
+   Recompute from raw test data; the published FIT is only used for validation.
+3. Dynamic AF over a thermal profile: average the failure rates, not the AFs or temperatures:
+   lambda_use = lambda_test * sum(w_i / AF_i). This is the Arrhenius average temperature of
+   Tencer et al. (2004). Ea is drawn from triangular(0.5, 0.7, 0.9) eV.
 4. Constant hazard (exponential): R(t) = exp(-lambda t).
 5. Series system: lambda_sys = sum(qty_i * lambda_i); B0.1 = -ln(0.999) / lambda_sys.
-6. Uncertainty and financial confidence intervals: bootstrap or Monte Carlo, following the course's
-   `qi()` pattern in `timothyfraser/sysen` code/ZZ_financial_analysis.py.
+6. Uncertainty and financial confidence intervals: parametric Monte Carlo (5,000 draws, common random
+   numbers for A vs B), following the course's `qi()` pattern in `timothyfraser/sysen`
+   code/ZZ_financial_analysis.py.
 
 ## Rules
 
