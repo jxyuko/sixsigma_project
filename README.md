@@ -29,5 +29,3 @@ py -3.13 -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt
 .venv/Scripts/python -m pytest
 ```
-
-Methods follow the SYSEN 5300 course materials (Fraser, `timothyfraser/sysen`), cited where used.
