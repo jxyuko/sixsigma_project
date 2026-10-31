@@ -218,3 +218,46 @@ def test_compare_different_slots_allowed(lib, draws):
     assert np.all(cmp.b.lam_sys >= cmp.a.lam_sys)
     assert cmp.p_b_outlasts_a == 0.0
     assert cmp.settings["config_a"] == {"ECU MCU": "F280049CPZQR"}
+
+
+# --- M5 verification: whole-pipeline cross-checks ---------------------------------------------------
+
+def test_evaluate_matches_numerical_integration_over_ea(lib, draws):
+    # Independent check of evaluate() including the Ea draw. For one zero-failure part,
+    # lambda_use = G / AF(Ea) with G ~ Exp(rate n t), so
+    #   P(FIT <= x) = E_Ea[ 1 - exp(-x * n t AF(Ea) / 1e9) ],  Ea ~ triangular(0.5, 0.7, 0.9).
+    # Solve the integral numerically for the median and 97.5th percentile and compare with the MC.
+    from scipy.integrate import quad
+    from scipy.optimize import brentq
+    from scipy.stats import triang
+    from functions.arrhenius import accel_factor
+    ea = triang(c=0.5, loc=0.5, scale=0.4)
+    nt = 1900 * 1000
+
+    def cdf(x):
+        return quad(lambda e: ea.pdf(e) * -np.expm1(-x * nt * accel_factor(55, 125, e) / 1e9), 0.5, 0.9)[0]
+
+    ev = evaluate({"ECU MCU": "F280049CPZQR"}, 55, draws=draws, library=lib)
+    for q, col, tol in [(0.5, "median", 0.07), (0.975, "upper", 0.10)]:
+        exact = brentq(lambda x: cdf(x) - q, 1e-6, 1e4)
+        assert value(ev.components, "fit", col) == pytest.approx(exact, rel=tol)
+
+
+def test_monte_carlo_precision_of_5000_draws(lib):
+    # 8a: with 5,000 draws, the system results barely move between seeds. Ten seeds; the spread
+    # (max/min) of the median system FIT stays within 10% and of the 97.5th percentile within 20%.
+    meds, ups = [], []
+    for seed in range(10):
+        ev = evaluate(TI_ALL, 55, draws=draw_library(lib, seed=seed), library=lib)
+        meds.append(value(ev.system, "fit"))
+        ups.append(value(ev.system, "fit", "upper"))
+    assert max(meds) / min(meds) < 1.10
+    assert max(ups) / min(ups) < 1.20
+
+
+def test_jeffreys_prior_lowers_rates(lib):
+    # A5 sensitivity: Gamma(f + 1/2) has half the mean of Gamma(f + 1) for f = 0, so FIT drops
+    uni = evaluate(TI_ALL, 55, draws=draw_library(lib, prior="uniform"), library=lib)
+    jef = evaluate(TI_ALL, 55, draws=draw_library(lib, prior="jeffreys"), library=lib)
+    assert value(jef.system, "fit") < value(uni.system, "fit")
+    assert jef.settings["prior"] == "jeffreys"

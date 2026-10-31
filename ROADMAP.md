@@ -418,21 +418,33 @@ looking at the result.
 
 ### 11a. Verification tests (`tests/`)
 
-| Test | Expected |
-|---|---|
-| E2: AF(55 °C, test at 125 °C, 0.7 eV) | 77.65 ± 0.01 (matches the table's 77.6454) |
-| E2 degenerate: T = T_test | AF = 1 |
-| E4 known answer: TI C2000, n = 1900, t = 1000, 125 °C → 55 °C, CL = 0.6, f = 0 | 6.21 FIT (TI publishes 6.19) |
-| E4 closed form: f = 0 | λ_CL = −ln(1 − CL)/D |
-| E4 distribution: 60th percentile of 100,000 Gamma(f+1, D) draws | within 1% of λ_0.60 |
-| E4 monotone | higher T_op, more failures or higher CL each give a higher λ |
-| E6 degenerate: one-bin profile | equals the single-temperature result |
-| E6 Jensen: profile vs its mean temperature | λ_profile ≥ λ(mean T); example 40/70/105 °C at 50/30/20% gives AF_eff = 12.3 vs 46.3 |
-| E8 | one slot → λ_sys = λ of that part; system FIT = sum of component FITs |
-| E9 | R_sys(B0.1) = 0.999 |
-| E11 | comparing a configuration with itself gives every Δ = 0 |
-| E13 | self-comparison gives P = 0.5; two zero-failure parts give D_1/(D_1 + D_2) within MC error |
-| 8c | empirical 0.1% quantile ≈ E9 (within 5%: with 4×10⁶ systems the quantile rests on ~4,000 failures, so its MC error is ~1.6%) |
+Status: **all pass (77 tests, M5, 2026-10-31).** Run with `.venv/Scripts/python -m pytest`.
+
+| Check | Expected | Result | Test(s) |
+|---|---|---|---|
+| E2: AF(55 °C, test at 125 °C, 0.7 eV) | 77.65 ± 0.01 (matches the table's 77.6454) | ✅ | `test_equations::test_af_known_answer` |
+| E2 degenerate: T = T_test | AF = 1 | ✅ | `test_af_degenerate_same_temperature` |
+| E4 known answer: TI C2000, n = 1900, t = 1000, 125 °C → 55 °C, CL = 0.6, f = 0 | 6.21 FIT (TI publishes 6.19) | ✅ 6.21 | `test_lambda_known_answer_ti_c2000`, `test_simulator::test_known_answer_fit_60pct_bound` |
+| E4 closed form: f = 0 | λ_CL = −ln(1 − CL)/D | ✅ | `test_lambda_zero_failure_closed_form` |
+| E4 distribution: 60th percentile of 100,000 Gamma(f+1, D) draws | within 1% of λ_0.60 (f = 0, 1, 3) | ✅ | `test_gamma_60th_percentile_is_chi_square_bound`, `test_gamma_draws_known_answer_ti_c2000_fit` |
+| E4 monotone | higher T_op, more failures or higher CL each give a higher λ | ✅ | `test_lambda_increases_with_use_temperature`, `test_lambda_increases_with_failures_and_confidence`, `test_simulator::test_hotter_is_worse` |
+| E6 degenerate: one-bin profile | equals the single-temperature result | ✅ | `test_effective_af_one_bin_equals_single_temperature`, `test_profile_one_bin_equals_scalar` |
+| E6 Jensen: profile vs its mean temperature | λ_profile ≥ λ(mean T); 40/70/105 °C at 50/30/20% gives AF_eff = 12.3 vs 46.3 | ✅ 12.29 vs 46.30 | `test_effective_af_known_answer_and_jensen`, `test_profile_worse_than_mean_temperature` |
+| E6 = Tencer T_aa | AF_eff = AF(T_aa) | ✅ to 1e-10 | `test_effective_af_matches_arrhenius_average_temperature` |
+| E7 | R(MTTF) = e⁻¹; R(0) = 1; constant hazard | ✅ | `test_reliability::test_life_functions_*`, `test_hazard_is_constant_over_time` |
+| E8 | one slot → λ_sys = λ of that part; system FIT = sum of component FITs (per draw) | ✅ | `test_series_*`, `test_one_slot_system_equals_component`, `test_system_rate_is_sum_per_draw` |
+| E9 | R_sys(B0.1) = 0.999 | ✅ | `test_b01_reliability_is_0999`, `test_b01_reliability_band` |
+| E10, E14 | WR = 1 at t_w = B0.1; P(WR ≥ 1) = 1 for a tiny warranty, 0 for a huge one | ✅ | `test_warranty_ratio_degenerate`, `test_p_meets_warranty_*` |
+| E11 | comparing a configuration with itself gives every Δ = 0; differences are paired per draw | ✅ | `test_self_comparison_is_neutral`, `test_differences_are_paired_draws` |
+| E13 | self-comparison gives P = 0.5; two zero-failure parts give D_1/(D_1 + D_2) within MC error | ✅ 0.733 ± 0.02 | `test_p_outlasts_closed_form_two_zero_failure_parts`, `test_p_outlasts_ties_and_swap` |
+| 8a whole pipeline | `evaluate()` FIT quantiles for one part, with Ea drawn, match numerical integration over the triangular Ea density | ✅ median 4.47 vs 4.54; 97.5% 35.7 vs 34.0 | `test_evaluate_matches_numerical_integration_over_ea` |
+| 8a MC precision | 10 seeds of 5,000 draws: median system FIT spread < 10%, 97.5th percentile < 20% | ✅ 7.03–7.37; 36.9–41.0 | `test_monte_carlo_precision_of_5000_draws` |
+| 8a CRN / reproducibility | same part → same draws in any configuration; same seed → same result | ✅ | `test_same_part_same_draws_across_configs`, `test_family_parts_share_draws`, `test_same_seed_reproduces` |
+| 8c | empirical 0.1% quantile ≈ E9 (within 5%: with 4×10⁶ systems the quantile rests on ~4,000 failures, so its MC error is ~1.6%) | ✅ | `test_failure_time_check_matches_b01` |
+| A5 sensitivity | Jeffreys prior gives lower FIT than uniform | ✅ | `test_jeffreys_prior_lowers_rates` |
+
+**Not covered by 11a** (these are validation, M6): whether the simulated rates match reality
+(11c, 11d) and whether the 95% intervals cover a known true rate 95% of the time (11e).
 
 ### 11b. Real result 1: supplier-published FIT `[ON HOLD]`
 
@@ -534,7 +546,7 @@ Each milestone ends with its tests passing and this file updated.
 | M2 ✅ | Equation functions (E1–E10, E14) and Monte Carlo draws (A2, A5) | 11a tests for these pass (50 tests in total) |
 | M3 ✅ | Simulator Mode 1 `evaluate()` | Component + system outputs with CIs for any 1–6 slot configuration and any profile; 18 tests in `tests/test_simulator.py` (68 in total) |
 | M4 ✅ | Simulator Mode 2 `compare()` | A, B, differences and P(B outlasts A); self-comparison checks pass; 23 tests in `tests/test_simulator.py` (73 in total) |
-| M5 | Verification | All 11a tests pass (11b on hold) |
+| M5 ✅ | Verification | All 11a tests pass (77 tests; 11b on hold) |
 | M6 | Real-result validation | 11c–11e done, reference data cited |
 | M7 | Results + financial | Section 9 and 10 tables and figures in `results/` |
 | M8 | Reports | Preliminary Results and Financial Impacts .docx in `reports/` |
@@ -594,3 +606,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-10-31 | M3 done. New `functions/simulator.py`: `draw_library()` (8a, per-family draws for common random numbers, shared or independent Ea), `evaluate()` (Mode 1: component AF_eff, D, FIT, MTTF, R(t_w) and the 60% datasheet-style FIT; system FIT, MTTF, R(t_w), B0.1, WR, P(WR ≥ 1), all as median + 95% CI), `reliability_band()`, `qi()`, `failure_time_check()` (8c). A7 placeholder warranty 2,920 h (8 yr × 1 h/day, unsourced). 8c tolerance set to 5% from the MC error. All-TI at 55 °C: system FIT 7.0 (95% CI 1.1–40), B0.1 142,000 h, WR 49, P(WR ≥ 1) = 1.00; on the 40/70/105 °C profile: FIT 46 (8.7–186), WR 7.5 (1.8–39), P = 0.999. 68 tests pass. |
 | 2026-10-31 | Team decision (A7): the 2,920 h warranty (8 yr × 1 powered-on h/day) is adopted as one warranty for the whole system, no longer a placeholder. Source for 1 h/day still to cite. |
 | 2026-10-31 | M4 done. `functions/simulator.py` adds `compare()` (Mode 2: both configurations on one set of draws, E11 differences per draw for every system metric, P(meets warranty) for each), `p_outlasts()` (E13, ties count half) and `system_draws()` (shared by `evaluate()` and `compare()`). Tests: self-comparison gives Δ = 0 and P = 0.5; LTC6811-1 vs BQ79656 matches the closed form D_B/(D_A+D_B) = 0.733; paired per-draw differences; adding slots never lowers λ_sys. Example at 55 °C, A = all-TI: B = RH850 MCU gives system FIT 13.7 vs 7.0, P(B outlasts A) = 0.29; B = ADI AFE + isolator + gate driver gives 7.9 vs 7.0, P = 0.09. 73 tests pass. |
+| 2026-10-31 | M5 done. 11a now maps every check to its test(s) and result. New checks: λ monotone in T_op over 25–125 °C; whole-pipeline check of `evaluate()` against numerical integration over the Ea density (median 4.47 vs 4.54 FIT, 97.5% 35.7 vs 34.0); MC precision over 10 seeds (median system FIT 7.03–7.37); Jeffreys prior lowers FIT. 77 tests pass. |

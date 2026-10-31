@@ -136,3 +136,10 @@ def test_gamma_draws_reject_bad_inputs():
         draw_lambda(0, 0, 1000, 10, rng)
     with pytest.raises(ValueError):
         draw_lambda(-1, 100, 1000, 10, rng)
+
+
+def test_lambda_increases_with_use_temperature():
+    # 11a E4 monotone in T_op: the 60% bound rises at every step of a 25-125 C grid
+    temps = np.arange(25, 126, 5)
+    lam = [lambda_bound(0, device_hours(1900, 1000, accel_factor(t, 125, 0.7)), 0.60) for t in temps]
+    assert np.all(np.diff(lam) > 0)
