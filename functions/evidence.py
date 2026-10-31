@@ -1,6 +1,5 @@
 # evidence.py
-# Failure rate from an HTOL test (ROADMAP Section 7, E3-E5).
-# The Gamma(f + 1, D) draws for the Monte Carlo (E4, Section 8) come in M2.
+# Failure rate from an HTOL test (ROADMAP Section 7, E3-E5) and its Monte Carlo draws (E4, A5).
 
 import numpy as np
 from scipy.stats import chi2
@@ -30,3 +29,21 @@ def fit(lam):
 # mttf_hours(): E5, mean time to failure under a constant rate
 def mttf_hours(lam):
     return 1 / lam
+
+
+# PRIORS: A5, the Gamma shape is f + 1 (uniform prior, default) or f + 1/2 (Jeffreys, sensitivity)
+PRIORS = {"uniform": 1.0, "jeffreys": 0.5}
+
+
+# draw_lambda(): E4 / A5, R draws of the failure rate at the TEST temperature
+# lambda_test ~ Gamma(shape = f + 1, rate = n * t); divide by AF_eff (E6) for the use condition.
+# Its 60th percentile times 1/AF is the supplier chi-square bound (E4).
+# f: [int] failures;  n: [numeric] sample size;  t_hours: [numeric] test hours per device
+# rng: numpy Generator;  prior: "uniform" or "jeffreys"
+def draw_lambda(f, n, t_hours, size, rng, prior="uniform"):
+    if n * t_hours <= 0:
+        raise ValueError("device-hours must be positive")
+    if f < 0:
+        raise ValueError("failures can't be negative")
+    shape = f + PRIORS[prior]
+    return rng.gamma(shape, 1 / (n * t_hours), size=size)

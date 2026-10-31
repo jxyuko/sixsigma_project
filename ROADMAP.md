@@ -487,9 +487,10 @@ valid, and it needs no new data.
 
 ```
 functions/
-  arrhenius.py      kelvin(), accel_factor(), effective_af()                   E1, E2, E6
-  evidence.py       device_hours(), lambda_bound(), draw_lambda()              E3, E4
-  reliability.py    r(), f(), h(), fit(), mttf(), series_lambda(), b_life(), warranty_ratio()   E5, E7–E10
+  arrhenius.py      kelvin(), accel_factor(), effective_af(), draw_ea()        E1, E2, E6, A2
+  evidence.py       device_hours(), lambda_bound(), fit(), mttf_hours(), draw_lambda()   E3–E5, A5
+  reliability.py    reliability(), unreliability(), density(), hazard(), series_lambda(),
+                    b_life(), warranty_ratio(), p_meets_warranty()             E7–E10, E14
   library.py        load_library(), get_part()                                 component library
   simulator.py      evaluate(config, profile)               → component + system tables  (Mode 1)
                     compare(config_a, config_b, profile)    → A, B, differences, P(B > A) (Mode 2)
@@ -504,7 +505,8 @@ code/
 data/reference/
   handbook_rates.csv, field_evidence.csv   (with source citations)
 tests/
-  test_arrhenius.py, test_evidence.py, test_reliability.py, test_simulator.py, test_validation.py
+  test_library.py, test_equations.py (E1–E6, draws), test_reliability.py (E7–E10, E14),
+  test_simulator.py, test_validation.py
 ```
 
 - A configuration is a plain mapping from slot to part, e.g.
@@ -520,8 +522,8 @@ Each milestone ends with its tests passing and this file updated.
 | # | Milestone | Done when |
 |---|---|---|
 | M0 | Roadmap agreed (this file) | The team has reviewed the simulator design and model |
-| M1 ✅ | Component library | `data/components.csv` (19 parts, 17 usable), `data/codebook.md`, `functions/library.py`; 10 tests in `tests/test_library.py` pass |
-| M2 | Equation functions (E1–E10, E14) | 11a tests for these pass |
+| M1 ✅ | Component library | `data/components.csv` (19 parts, 17 usable), `data/codebook.md`, `functions/library.py`; 16 tests in `tests/test_library.py` pass |
+| M2 ✅ | Equation functions (E1–E10, E14) and Monte Carlo draws (A2, A5) | 11a tests for these pass (50 tests in total) |
 | M3 | Simulator Mode 1 `evaluate()` | Component + system outputs with CIs for any 1–6 slot configuration and any profile |
 | M4 | Simulator Mode 2 `compare()` | A, B, differences and P(B outlasts A); self-comparison checks pass |
 | M5 | Verification | All 11a tests pass (11b on hold) |
@@ -580,3 +582,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-10-29 | M1 done: `code/01_clean_data.py` builds `data/components.csv` (19 parts, 17 usable) with `data/codebook.md`; `functions/library.py` (`load_library`, `get_part`); 10 tests pass. Found that ISL78714's failure count is blank, so it's excluded alongside MAX31730. Added `pytest.ini`. |
 | 2026-10-30 | Team verified published FITs against supplier reports (LTC6811, ISL78714 and RH850 verified; ADuM4135 not verified). Added `data/fit_verification.csv`, plus library columns `fit_published_status/source/note` and `fit_calculated`, `fit_calc_ratio`, `fit_calc_note`; published values are never overwritten. Added `functions/arrhenius.py` (E1–E2) and `functions/evidence.py` (E3–E5) with 9 tests in `tests/test_equations.py`; 23 tests pass. |
 | 2026-10-30 | Team decision: keep published FITs **out of the model**. The model stays on test data only (the v2 approach). Published values, verification and our calculated FIT moved out of `components.csv` into `data/reference/published_fit.csv` and `data/reference/fit_verification.csv`, stored for a possible later decision. 11b put on hold. 25 tests pass. |
+| 2026-10-31 | M2 done. `functions/arrhenius.py` adds `effective_af()` (E6, vectorized over Ea draws) and `draw_ea()` (A2). `functions/evidence.py` adds `draw_lambda()` (E4/A5, uniform or Jeffreys prior). New `functions/reliability.py` (E7–E10, E14). Tests: E6 one-bin degenerate, the 40/70/105 °C example (AF_eff 12.29 vs 46.30), the Tencer T_aa equivalence, the Gamma 60th percentile vs the chi-square bound (f = 0, 1, 3), 6.21 FIT from draws, series sum/product, R(B0.1) = 0.999, warranty ratio and P(WR ≥ 1). 50 tests pass. |
