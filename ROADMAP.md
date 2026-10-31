@@ -263,7 +263,7 @@ Each assumption has an ID so code comments and the report can cite it.
 | A4 | **Series system with independent failures.** | Every selected component is a single point of failure. Independence is standard without common-cause data. It's slightly optimistic if one thermal event hits several parts. | `[DECIDED]` |
 | A5 | **Failure-rate uncertainty: λ ~ Gamma(f + 1, D).** This is the posterior under a uniform prior, and its 60th percentile equals the supplier chi-square bound. | It reproduces the industry convention exactly and adds a full distribution, which is what makes CIs and P(B outlasts A) possible. A Jeffreys prior, Gamma(f + ½, D), is run as a sensitivity. | `[DEFAULT]` |
 | A6 | **Sample size × test hours = device-hours at T_test**, using the supplier's pooled sample size where one is given. | It's the only number published. TI's FIT reproduces exactly under this reading. | `[DEFAULT]` |
-| A7 | **Warranty period in operating hours.** Default: 8 years / 100,000 miles, converted to powered-on hours. | Failure rates are per operating hour, but warranties are stated in years and miles. The conversion drives WR, so it's stated and checked for sensitivity. | `[DEFAULT]` `[TODO: sources for the conversion]` |
+| A7 | **Warranty period in operating hours.** Placeholder default in code: 8 years × 365 days × 1 powered-on hour per day = **2,920 h** (`DEFAULT_WARRANTY_HOURS` in `functions/simulator.py`). The 1 h/day figure is not yet sourced. | Failure rates are per operating hour, but warranties are stated in years and miles. The conversion drives WR, so it's stated and checked for sensitivity. | `[DEFAULT]` `[TODO: source the hours per day and agree the conversion]` |
 | A8 | **Only thermally activated failure mechanisms** are modelled. | HTOL only accelerates these. Cycling, vibration and humidity would add failures, so our life is an upper bound on field life, and we expect to under-predict field failure rates (11d). | `[DECIDED]` |
 | A9 | **Parts in one qualification family share data**: the 4 TI C2000 parts, and the 5 RH850 parts. | That's how the suppliers report it. | `[DECIDED]` |
 | A10 | **One part per slot** (quantity 1) for now. | It keeps comparisons clean. Quantities scale λ_sys linearly (E8), so adding them later is easy. | `[DEFAULT]` |
@@ -360,7 +360,14 @@ error.
 
 Shown as tornado charts and line plots.
 
-**Reproducibility:** fixed random seed, recorded in every results file.
+**Reproducibility:** fixed random seed (default 5300), recorded in every results file.
+
+**Common random numbers in code:** `draw_library()` draws Ea and one λ_test array per qualification
+family (A9) for the whole library, in a fixed order. Any configuration run on the same `Draws`
+therefore uses identical draws for the same part, which is what Mode 2 needs.
+
+**Years in outputs:** `mttf_years_continuous` and `b01_years_continuous` are hours ÷ 8,760, i.e.
+years of 24/7 operation, not calendar years. Calendar life depends on the duty assumption (A7).
 
 ## 9. Results for the Preliminary Results report
 
@@ -424,7 +431,7 @@ looking at the result.
 | E9 | R_sys(B0.1) = 0.999 |
 | E11 | comparing a configuration with itself gives every Δ = 0 |
 | E13 | self-comparison gives P = 0.5; two zero-failure parts give D_1/(D_1 + D_2) within MC error |
-| 8c | empirical 0.1% quantile ≈ E9 (within 2%) |
+| 8c | empirical 0.1% quantile ≈ E9 (within 5%: with 4×10⁶ systems the quantile rests on ~4,000 failures, so its MC error is ~1.6%) |
 
 ### 11b. Real result 1: supplier-published FIT `[ON HOLD]`
 
@@ -524,7 +531,7 @@ Each milestone ends with its tests passing and this file updated.
 | M0 | Roadmap agreed (this file) | The team has reviewed the simulator design and model |
 | M1 ✅ | Component library | `data/components.csv` (19 parts, 17 usable), `data/codebook.md`, `functions/library.py`; 16 tests in `tests/test_library.py` pass |
 | M2 ✅ | Equation functions (E1–E10, E14) and Monte Carlo draws (A2, A5) | 11a tests for these pass (50 tests in total) |
-| M3 | Simulator Mode 1 `evaluate()` | Component + system outputs with CIs for any 1–6 slot configuration and any profile |
+| M3 ✅ | Simulator Mode 1 `evaluate()` | Component + system outputs with CIs for any 1–6 slot configuration and any profile; 18 tests in `tests/test_simulator.py` (68 in total) |
 | M4 | Simulator Mode 2 `compare()` | A, B, differences and P(B outlasts A); self-comparison checks pass |
 | M5 | Verification | All 11a tests pass (11b on hold) |
 | M6 | Real-result validation | 11c–11e done, reference data cited |
@@ -583,3 +590,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-10-30 | Team verified published FITs against supplier reports (LTC6811, ISL78714 and RH850 verified; ADuM4135 not verified). Added `data/fit_verification.csv`, plus library columns `fit_published_status/source/note` and `fit_calculated`, `fit_calc_ratio`, `fit_calc_note`; published values are never overwritten. Added `functions/arrhenius.py` (E1–E2) and `functions/evidence.py` (E3–E5) with 9 tests in `tests/test_equations.py`; 23 tests pass. |
 | 2026-10-30 | Team decision: keep published FITs **out of the model**. The model stays on test data only (the v2 approach). Published values, verification and our calculated FIT moved out of `components.csv` into `data/reference/published_fit.csv` and `data/reference/fit_verification.csv`, stored for a possible later decision. 11b put on hold. 25 tests pass. |
 | 2026-10-31 | M2 done. `functions/arrhenius.py` adds `effective_af()` (E6, vectorized over Ea draws) and `draw_ea()` (A2). `functions/evidence.py` adds `draw_lambda()` (E4/A5, uniform or Jeffreys prior). New `functions/reliability.py` (E7–E10, E14). Tests: E6 one-bin degenerate, the 40/70/105 °C example (AF_eff 12.29 vs 46.30), the Tencer T_aa equivalence, the Gamma 60th percentile vs the chi-square bound (f = 0, 1, 3), 6.21 FIT from draws, series sum/product, R(B0.1) = 0.999, warranty ratio and P(WR ≥ 1). 50 tests pass. |
+| 2026-10-31 | M3 done. New `functions/simulator.py`: `draw_library()` (8a, per-family draws for common random numbers, shared or independent Ea), `evaluate()` (Mode 1: component AF_eff, D, FIT, MTTF, R(t_w) and the 60% datasheet-style FIT; system FIT, MTTF, R(t_w), B0.1, WR, P(WR ≥ 1), all as median + 95% CI), `reliability_band()`, `qi()`, `failure_time_check()` (8c). A7 placeholder warranty 2,920 h (8 yr × 1 h/day, unsourced). 8c tolerance set to 5% from the MC error. All-TI at 55 °C: system FIT 7.0 (95% CI 1.1–40), B0.1 142,000 h, WR 49, P(WR ≥ 1) = 1.00; on the 40/70/105 °C profile: FIT 46 (8.7–186), WR 7.5 (1.8–39), P = 0.999. 68 tests pass. |
