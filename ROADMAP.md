@@ -164,7 +164,8 @@ under stated assumptions. This sets t_w for the warranty ratio and warranty cost
 **Evaluation: comparing the simulator to real results (Section 11).** A simulator is only useful
 if its numbers resemble reality. Beyond unit tests, we compare it against four kinds of outside
 evidence:
-1. **Supplier results:** each supplier's own published FIT at their stated conditions.
+1. **Supplier results:** each supplier's own published FIT at their stated conditions. *On hold:*
+   published FITs are stored in `data/reference/` but not used (Section 14).
 2. **Industry prediction handbooks:** Siemens SN 29500, IEC 61709 and MIL-HDBK-217F, for the same
    part types and temperatures.
 3. **Field evidence:** published field failure rates for automotive ICs, and real warranty
@@ -189,36 +190,40 @@ to a bug or a data error.
 
 ## 4. Component library
 
-`data/components.csv` holds one row per part, built from `data/raw/parameter_table.xlsx`.
+`data/components.csv` holds one row per part, built from `data/raw/parameter_table.xlsx` by
+`code/01_clean_data.py`. **`data/codebook.md` is the authoritative column list.** It has 19 parts:
+17 usable, and 2 excluded because a required test parameter is blank in the raw table.
 
 | Slot | Library parts (supplier, part) | Notes |
 |---|---|---|
 | ECU MCU | TI C2000 (F280049 / F280039 / F280025 / F2800157); Renesas RH850 (R7F701xxxx) | The 4 TI parts share one dataset, as do the 5 Renesas parts (A9). RH850 data issue, see Section 14 |
-| BMS AFE | TI BQ79656-Q1; ADI LTC6811-1; Renesas ISL78714 | LTC6811 and ISL78714 data issues |
+| BMS AFE | TI BQ79656-Q1; ADI LTC6811-1; Renesas ISL78714 | LTC6811 data issue. **ISL78714 not usable: failures blank** |
 | Digital isolator | TI ISO7741-Q1; ADI ADuM141E | ADuM141E had **f = 1** failure |
-| Temperature sensor | TI TMP4719-Q1; ADI MAX31730 | MAX31730 has no sample size |
+| Temperature sensor | TI TMP4719-Q1; ADI MAX31730 | **MAX31730 not usable: sample size blank** |
 | Gate driver | TI UCC21750-Q1; ADI ADuM4135 | Typed "ASUM4135" in the raw table |
 | Current sensor | TI TMCS1101-Q1 | Only one supplier so far |
 
-Library columns:
+Key library columns (full list in `data/codebook.md`):
 
 | Column | Symbol | Unit | Meaning |
 |---|---|---|---|
 | slot | | | One of the six component slots |
-| supplier, part | | | Manufacturer and part number |
+| supplier, part, raw_part, family | | | Manufacturer, part number, the raw-table spelling, and the shared qualification family (A9) |
 | test_temp_c | T_test | °C | HTOL stress (junction) temperature |
 | test_hours | t | h | Test duration per device |
 | sample_size | n | devices | Units on test (may be pooled units; A6) |
 | failures | f | count | Failures observed |
 | ea_ev | Ea | eV | Activation energy the supplier assumed |
-| fit_published | | FIT | Supplier's published FIT, used **only for validation** (11b) |
-| ref_temp_c | | °C | Use temperature the published FIT refers to |
-| ref_conf_level | | fraction | Confidence level the published FIT used |
-| unit_price_usd | | USD | From the price sheet (used in the financial model) |
-| source | | | Citation / URL of the reliability report |
-| flag | | | Data-quality note (Section 14) |
+| unit_price_usd, price_part | | USD | Price-sheet price and which part number it came from |
+| source | | | Bibliography number; report URL `[TODO]` |
+| usable | | bool | All of T_test, t, n, f, Ea present |
+| flag | | | Data-quality notes (Section 14) |
 
-Reference data for validation lives separately, in `data/reference/` (Section 11).
+**The model reads only test data.** Manufacturer-published FITs, MTBFs and their reference
+conditions, the team's verification of them, and our FIT calculated at the same conditions are
+stored separately in `data/reference/published_fit.csv` and `data/reference/fit_verification.csv`.
+They're kept in the repo but **not used by the model** (team decision 2026-10-30; may be revisited).
+Other reference data for validation also lives in `data/reference/` (Section 11).
 
 **Out of scope:** mechanical parts, ICE vehicles, software failures, and failure mechanisms that
 aren't thermally activated.
@@ -361,8 +366,8 @@ Shown as tornado charts and line plots.
 
 All of these come from running the simulator.
 
-1. **Library check:** every part's recomputed 60% FIT at its supplier's reference conditions
-   against the published FIT (11b).
+1. **Library table:** every usable part's test evidence (device-hours, failures) and its FIT at a
+   reference temperature, all from test data.
 2. **Mode 1 at a reference temperature:** a full six-slot configuration, giving the component
    table and system R_sys(t) band, B0.1, WR and P(WR ≥ 1), all with 95% CIs.
 3. **Temperature sweep:** system B0.1 and P(WR ≥ 1) from 25 to 125 °C, showing where the
@@ -370,8 +375,8 @@ All of these come from running the simulator.
 4. **Mode 2 examples:** the all-TI configuration against configurations that swap suppliers in
    one or more slots, giving differences with CIs and P(B outlasts A).
 5. **Sensitivity** (8d).
-6. **Comparison to real results** (11b–11e): simulator FIT against supplier, handbook and field
-   values on a log-scale chart, plus the coverage-study result.
+6. **Comparison to real results** (11c–11e): simulator FIT against handbook and field values on a
+   log-scale chart, plus the coverage-study result.
 
 ## 10. Financial model
 
@@ -421,15 +426,16 @@ looking at the result.
 | E13 | self-comparison gives P = 0.5; two zero-failure parts give D_1/(D_1 + D_2) within MC error |
 | 8c | empirical 0.1% quantile ≈ E9 (within 2%) |
 
-### 11b. Real result 1: supplier-published FIT
+### 11b. Real result 1: supplier-published FIT `[ON HOLD]`
 
-- **Comparison:** run the simulator at each supplier's own reference conditions (use temperature,
-  confidence level, Ea) and compare the 60% bound with the published FIT.
-- **Metric:** ratio simulator / published.
-- **Expected:** a ratio of 1.00 ± 0.05 when the published number was produced the standard way.
-- **Already known:** TI parts pass (C2000 6.21 vs 6.19). Renesas RH850, ADI LTC6811, ADuM4135,
-  ADuM141E and ISL78714 don't (Section 14). Each failure is reported with its likely cause, such
-  as a different Ea, confidence level or device-hour definition.
+- **Team decision (2026-10-30):** published FITs are **not used**, neither in the model nor in this
+  validation. They're stored in `data/reference/published_fit.csv` in case we decide otherwise.
+- **Why:** the team's report check showed that some published values (RH850, LTC6811, ISL78714)
+  rest on larger datasets than the test data in our table. So a mismatch says nothing about our
+  model.
+- **If revived:** the file already holds our FIT calculated at each supplier's reference
+  conditions, and the ratio to the published value. TI parts reproduce (C2000 6.21 vs 6.19), which
+  remains the E4 known-answer test in 11a.
 
 ### 11c. Real result 2: industry reliability-prediction handbooks
 
@@ -514,11 +520,11 @@ Each milestone ends with its tests passing and this file updated.
 | # | Milestone | Done when |
 |---|---|---|
 | M0 | Roadmap agreed (this file) | The team has reviewed the simulator design and model |
-| M1 | Component library | `data/components.csv` and codebook; every part flagged where needed |
+| M1 ✅ | Component library | `data/components.csv` (19 parts, 17 usable), `data/codebook.md`, `functions/library.py`; 10 tests in `tests/test_library.py` pass |
 | M2 | Equation functions (E1–E10, E14) | 11a tests for these pass |
 | M3 | Simulator Mode 1 `evaluate()` | Component + system outputs with CIs for any 1–6 slot configuration and any profile |
 | M4 | Simulator Mode 2 `compare()` | A, B, differences and P(B outlasts A); self-comparison checks pass |
-| M5 | Verification + supplier check | All 11a tests pass; 11b table produced |
+| M5 | Verification | All 11a tests pass (11b on hold) |
 | M6 | Real-result validation | 11c–11e done, reference data cited |
 | M7 | Results + financial | Section 9 and 10 tables and figures in `results/` |
 | M8 | Reports | Preliminary Results and Financial Impacts .docx in `reports/` |
@@ -526,19 +532,44 @@ Each milestone ends with its tests passing and this file updated.
 
 ## 14. Data issues
 
-**Rule:** the simulator always uses the parts' **raw test data**, which keeps the common basis.
-Published FITs are only used for validation (11b), and a part whose published value can't be
-reproduced is flagged. The raw table's "Mission time = 120,000 hours" column isn't used.
+**Rule:**
+- The simulator uses only the parts' **raw test data**, which keeps the common basis.
+- Published FITs are stored in `data/reference/` and not used (11b on hold).
+- A part missing any of T_test, t, n, f or Ea is `usable = False` and is excluded from simulation.
+  We never fill the gap with a guess.
+- The raw table's "Mission time = 120,000 hours" column isn't used.
 
-| Part | Published FIT | Recomputed (60%, 55 °C) | Action |
-|---|---|---|---|
-| TI parts | match | match (C2000 6.21 vs 6.19) | ✓ |
-| Renesas RH850 | 0.0011 | ≈ 15.3 | Recheck the report (published MTBF 9.09×10¹¹ h) |
-| ADI LTC6811-1 | 33.95 (but its MTBF implies 0.16) | ≈ 0.32 | Recheck the report |
-| ADI ADuM4135 | 11.28 | ≈ 0.37 | Recheck; fix the "ASUM4135" typo |
-| Renesas ISL78714 | 3.72 | ≈ 3.06 | Check whether CL or Ea differs |
-| ADI MAX31730 | 28.1 | n missing | Find the sample size; its reference temperature is 25 °C |
-| ADI ADuM141E | 20.23 | ≈ 0.45 (f = 1, ν = 4) | Recheck the report |
+**Missing values** (parts excluded until the values are found in the supplier reports):
+- **Renesas ISL78714:** failures blank. Its published 3.72 FIT is verified and comes from seven HTOL
+  test groups, so we need each group's temperature, duration, sample size and failures.
+- **ADI MAX31730:** sample size blank.
+
+**Other cleaning fixes:**
+- "ASUM4135" corrected to ADuM4135.
+- "Rensas" corrected to Renesas Electronics.
+- Some prices are for orderable variants or family proxies; each is flagged in `flag`.
+- The current sensor has no price.
+
+**Published vs calculated FIT.** The team checked the supplier reports (2026-10-30). The raw table
+**mixes FITs reported directly by manufacturers with FITs that can be calculated from the
+transcribed test data**. A mismatch therefore usually means the manufacturer used a larger or
+different dataset, not that a value is wrong.
+
+These are stored, outside the model, in `data/reference/published_fit.csv`:
+- `fit_published`, unchanged, with `fit_published_status`, `fit_published_source` and
+  `fit_published_note` from `data/reference/fit_verification.csv`;
+- `fit_calculated` and `fit_calc_ratio`, our chi-square bound at the same reference conditions.
+
+The full table is in `data/codebook.md`. The headlines:
+
+| Family | Published | Status | Calculated | Reading |
+|---|---|---|---|---|
+| TI (all) | 0.1–6.19 | not checked | ratio 0.68–1.16 | Reproduced within TI's rounding |
+| Renesas RH850 | 0.0011 | verified (pp. 4, 7) | 15.3 | Renesas's basis is much larger than the 231-device HTOL test |
+| ADI LTC6811-1 | 33.95 | verified (r582 p. 2) | 0.32 | Reported directly by ADI at 0.7 eV / 60%; our table's data isn't ADI's basis |
+| Renesas ISL78714 | 3.72 | verified (7 HTOL groups) | — | Needs per-group data |
+| ADI ADuM4135 | 11.28 | **not verified** | 0.37 | Left out of FIT comparisons until ADI replies |
+| ADI ADuM141E | 20.23 | not checked | 0.45 | Check the report |
 
 ## 15. Changelog
 
@@ -546,3 +577,6 @@ reproduced is flagged. The raw table's "Mission time = 120,000 hours" column isn
 |---|---|
 | 2026-10-29 | v1: simulator design with Mode 1 Evaluate and Mode 2 Compare; equations, assumptions, build order. Saved in `docs/roadmap_history/ROADMAP_v1_simulator_2026-10-29.md`. |
 | 2026-10-29 | v2: failure rates held as Gamma(f+1, D) distributions (the 60% bound kept as the datasheet-style value). Dynamic AF over temperature profiles built in. Ea uncertainty (A2). Nested Monte Carlo engine with common random numbers. New outputs P(WR ≥ 1) and P(B outlasts A) (E13–E14). Added Section 11, evaluating the simulator: verification, plus validation against supplier FITs, handbooks, field evidence and a known-truth coverage study. |
+| 2026-10-29 | M1 done: `code/01_clean_data.py` builds `data/components.csv` (19 parts, 17 usable) with `data/codebook.md`; `functions/library.py` (`load_library`, `get_part`); 10 tests pass. Found that ISL78714's failure count is blank, so it's excluded alongside MAX31730. Added `pytest.ini`. |
+| 2026-10-30 | Team verified published FITs against supplier reports (LTC6811, ISL78714 and RH850 verified; ADuM4135 not verified). Added `data/fit_verification.csv`, plus library columns `fit_published_status/source/note` and `fit_calculated`, `fit_calc_ratio`, `fit_calc_note`; published values are never overwritten. Added `functions/arrhenius.py` (E1–E2) and `functions/evidence.py` (E3–E5) with 9 tests in `tests/test_equations.py`; 23 tests pass. |
+| 2026-10-30 | Team decision: keep published FITs **out of the model**. The model stays on test data only (the v2 approach). Published values, verification and our calculated FIT moved out of `components.csv` into `data/reference/published_fit.csv` and `data/reference/fit_verification.csv`, stored for a possible later decision. 11b put on hold. 25 tests pass. |

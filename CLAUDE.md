@@ -27,7 +27,7 @@ Code and results come first. A user interface comes later and must call the same
 1. Arrhenius AF = exp[(Ea/k)(1/T_use - 1/T_test)], with T in Kelvin and k = 8.617333e-5 eV/K.
 2. Failure rate as a distribution: lambda ~ Gamma(f+1, rate = n * t_test * AF). Its 60th percentile
    is the supplier chi-square bound chi2.ppf(CL, 2f+2) / (2 * n * t_test * AF); FIT = lambda * 1e9.
-   Recompute from raw test data; the published FIT is only used for validation.
+   Always compute from raw test data; published FITs are stored for reference, not used.
 3. Dynamic AF over a thermal profile: average the failure rates, not the AFs or temperatures:
    lambda_use = lambda_test * sum(w_i / AF_i). This is the Arrhenius average temperature of
    Tencer et al. (2004). Ea is drawn from triangular(0.5, 0.7, 0.9) eV.
@@ -55,19 +55,17 @@ Code and results come first. A user interface comes later and must call the same
 
 ## Known data issues in parameter_table.xlsx
 
-- TI rows reproduce their published FIT from the test data.
-- These rows don't match their own test data and need their source reports rechecked:
-
-  | Part | Published FIT | FIT from test data |
-  |---|---|---|
-  | Renesas RH850 | 0.0011 | ~15.3 |
-  | ADI LTC6811 | 33.95 | ~0.32 |
-  | ADI ADuM4135 (typed "ASUM4135") | 11.28 | ~0.37 |
-  | Renesas ISL78714 | 3.72 | ~3.06 |
-
-- MAX31730 has no sample size, and its use temperature is 25 C.
-- The current sensor has only one supplier (TI).
-- "Mission time 120000 hours" may really mean 120,000 miles; confirm with the team.
+The current list is in ROADMAP Section 14, and each part's notes are in the `flag` column of
+`data/components.csv` (see `data/codebook.md`). In short:
+- The raw table mixes manufacturer-reported FITs with FITs calculable from the test data.
+  **The model uses test data only.** Published FITs, their verification and our calculated FIT are
+  stored in `data/reference/published_fit.csv` and are not used (team decision 2026-10-30). Never
+  overwrite a published value.
+- TI rows reproduce. RH850 and LTC6811 are verified manufacturer values on a larger basis than our
+  test data. ADuM4135's 11.28 is not verified.
+- ISL78714 (failures blank) and MAX31730 (sample size blank) are excluded from simulation until
+  their reports are checked.
+- Never fill a blank raw value with a guess.
 
 ## Current deliverable
 
