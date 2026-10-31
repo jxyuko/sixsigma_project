@@ -17,9 +17,9 @@ from functions.reliability import (HOURS_PER_YEAR, b_life, p_meets_warranty, rel
 N_DRAWS = 5000   # Section 8a
 SEED = 5300      # Section 8: fixed seed, recorded with every result
 
-# A7 [ASSUMPTION, placeholder]: warranty of 8 years at 1 powered-on hour per day = 2,920 h.
-# The 8 years is the common EV battery-warranty term; the hours per day is NOT yet sourced
-# [TODO: cite a driving-time / powered-on-time source and decide the conversion with the team].
+# A7 [ASSUMPTION, team decision 2026-10-31]: one warranty for the whole system,
+# 8 years x 365 days x 1 powered-on hour per day = 2,920 operating hours.
+# The 8 years is the common EV battery-warranty term. [TODO: cite a source for 1 h/day]
 WARRANTY_YEARS = 8
 POWERED_HOURS_PER_DAY = 1.0
 DEFAULT_WARRANTY_HOURS = WARRANTY_YEARS * 365 * POWERED_HOURS_PER_DAY
