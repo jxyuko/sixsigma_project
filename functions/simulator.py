@@ -1,7 +1,8 @@
 # simulator.py
 # TASER-EV Monte Carlo simulator (ROADMAP Sections 2, 3 and 8).
 # Mode 1: evaluate(config, profile) -> component and system results with 95% CIs.
-# Mode 2: compare() comes in M4 and reuses draw_library() for common random numbers.
+# Mode 2: compare(config_a, config_b, profile) -> A, B, differences B - A and P(B outlasts A),
+#         run on one shared set of draws (common random numbers).
 
 from dataclasses import dataclass, field
 
@@ -127,24 +128,76 @@ def evaluate(config, profile=55, t_w=DEFAULT_WARRANTY_HOURS, draws=None, library
                           "metric": "fit_60pct_bound", "median": fit60, "lower": np.nan, "upper": np.nan})
 
     lam_sys = series_lambda(list(lam.values()))                             # E8 (A4, A10: qty 1)
-    b01 = b_life(lam_sys)                                                   # E9
-    wr = warranty_ratio(b01, t_w)                                           # E10
-    system = {
-        "fit": fit(lam_sys),
-        "mttf_years_continuous": 1 / lam_sys / HOURS_PER_YEAR,
-        "r_warranty": reliability(lam_sys, t_w),
-        "b01_hours": b01,
-        "b01_years_continuous": b01 / HOURS_PER_YEAR,   # years of 24/7 operation, not calendar years
-        "warranty_ratio": wr,
-    }
+    system = system_draws(lam_sys, t_w)
     sys_rows = [{"metric": k, **qi(v, cl)} for k, v in system.items()]
-    sys_rows.append({"metric": "p_meets_warranty", "median": p_meets_warranty(wr),   # E14
-                     "lower": np.nan, "upper": np.nan})
+    sys_rows.append({"metric": "p_meets_warranty", "median": p_meets_warranty(system["warranty_ratio"]),
+                     "lower": np.nan, "upper": np.nan})                     # E14
 
     settings = {"profile": profile, "t_w_hours": t_w, "cl": cl, "seed": draws.seed,
                 "n_draws": draws.n_draws, "prior": draws.prior, "ea_mode": draws.ea_mode,
                 "config": {s: r["part"] for s, r in parts.items()}}
     return Evaluation(pd.DataFrame(comp_rows), pd.DataFrame(sys_rows), lam, lam_sys, settings)
+
+
+# system_draws(): per-draw system metrics from the system failure rate (E5, E7-E10)
+def system_draws(lam_sys, t_w):
+    b01 = b_life(lam_sys)                                                   # E9
+    return {
+        "fit": fit(lam_sys),
+        "mttf_years_continuous": 1 / lam_sys / HOURS_PER_YEAR,
+        "r_warranty": reliability(lam_sys, t_w),
+        "b01_hours": b01,
+        "b01_years_continuous": b01 / HOURS_PER_YEAR,   # years of 24/7 operation, not calendar years
+        "warranty_ratio": warranty_ratio(b01, t_w),                         # E10
+    }
+
+
+@dataclass
+class Comparison:
+    """Mode 2 result: both evaluations, the B - A differences and P(B outlasts A)."""
+    a: Evaluation
+    b: Evaluation
+    differences: pd.DataFrame
+    p_b_outlasts_a: float
+    settings: dict = field(default_factory=dict)
+
+
+# p_outlasts(): E13, P(B0.1_B > B0.1_A) = P(lambda_sys_B < lambda_sys_A) over paired draws.
+# Ties (identical draws, e.g. the same configuration) count as half, so self-comparison gives 0.5.
+def p_outlasts(lam_sys_a, lam_sys_b):
+    a, b = np.asarray(lam_sys_a), np.asarray(lam_sys_b)
+    return float(np.mean(b < a) + 0.5 * np.mean(b == a))
+
+
+# compare(): Mode 2 (ROADMAP Section 2). Runs both configurations on ONE set of draws (common
+# random numbers, 8a), so the same part gets the same draws in A and B, and differences come only
+# from the parts that differ. The configurations may differ in parts and in which slots are filled.
+# Returns A and B (as evaluate()), differences per system metric (E11) and P(B outlasts A) (E13).
+def compare(config_a, config_b, profile=55, t_w=DEFAULT_WARRANTY_HOURS, draws=None, library=None, cl=0.95):
+    lib = load_library() if library is None else library
+    draws = draw_library(lib) if draws is None else draws
+    a = evaluate(config_a, profile, t_w, draws, lib, cl)
+    b = evaluate(config_b, profile, t_w, draws, lib, cl)
+
+    # E11: differences computed draw by draw, then summarized
+    sys_a, sys_b = system_draws(a.lam_sys, t_w), system_draws(b.lam_sys, t_w)
+    rows = []
+    for metric in sys_a:
+        delta = sys_b[metric] - sys_a[metric]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            pct = 100 * delta / sys_a[metric]
+        d, dp = qi(delta, cl), qi(pct, cl)
+        rows.append({"metric": metric,
+                     "a_median": np.median(sys_a[metric]), "b_median": np.median(sys_b[metric]),
+                     "delta_median": d["median"], "delta_lower": d["lower"], "delta_upper": d["upper"],
+                     "delta_pct_median": dp["median"], "delta_pct_lower": dp["lower"],
+                     "delta_pct_upper": dp["upper"]})
+    pa, pb = p_meets_warranty(sys_a["warranty_ratio"]), p_meets_warranty(sys_b["warranty_ratio"])
+    rows.append({"metric": "p_meets_warranty", "a_median": pa, "b_median": pb, "delta_median": pb - pa})
+
+    settings = {**a.settings, "config_a": a.settings["config"], "config_b": b.settings["config"]}
+    settings.pop("config")
+    return Comparison(a, b, pd.DataFrame(rows), p_outlasts(a.lam_sys, b.lam_sys), settings)
 
 
 # reliability_band(): R_sys(t) median and CI over a grid of operating hours (E8)

@@ -1,5 +1,5 @@
 # test_simulator.py
-# Tests for Mode 1 evaluate() and the Monte Carlo engine (ROADMAP Sections 2, 8 and 11a).
+# Tests for Mode 1 evaluate(), Mode 2 compare() and the Monte Carlo engine (ROADMAP Sections 2, 8, 11a).
 
 import math
 
@@ -7,8 +7,8 @@ import numpy as np
 import pytest
 
 from functions.library import load_library
-from functions.simulator import (DEFAULT_WARRANTY_HOURS, draw_library, evaluate, failure_time_check,
-                                 qi, reliability_band)
+from functions.simulator import (DEFAULT_WARRANTY_HOURS, compare, draw_library, evaluate,
+                                 failure_time_check, p_outlasts, qi, reliability_band)
 
 TI_ALL = {
     "ECU MCU": "F280049CPZQR",
@@ -171,3 +171,50 @@ def test_failure_time_check_matches_b01():
     # With 4e6 systems the 0.1% quantile rests on ~4,000 failures, so its relative MC error is ~1.6%.
     empirical, closed = failure_time_check([6e-9, 1e-9, 2e-10], 4_000_000, np.random.default_rng(8))
     assert empirical == pytest.approx(closed, rel=0.05)
+
+
+# --- Mode 2: compare() (E11, E13) ------------------------------------------------------------------
+
+def diff(cmp, metric, col="delta_median"):
+    return cmp.differences.loc[cmp.differences["metric"] == metric, col].iloc[0]
+
+
+def test_self_comparison_is_neutral(lib, draws):
+    # 11a E11/E13: a configuration against itself gives every difference 0 and P = 0.5
+    cmp = compare(TI_ALL, TI_ALL, 55, draws=draws, library=lib)
+    assert (cmp.differences["delta_median"] == 0).all()
+    assert (cmp.differences.dropna()[["delta_lower", "delta_upper"]] == 0).all().all()
+    assert cmp.p_b_outlasts_a == 0.5
+
+
+def test_p_outlasts_closed_form_two_zero_failure_parts(lib, draws):
+    # E13 closed form: two zero-failure parts at the same T_test (shared Ea, so the same AF per draw)
+    # give P(lambda_B < lambda_A) = D_B / (D_A + D_B). LTC6811-1 (n 37,101) vs BQ79656 (n 101,758).
+    cmp = compare({"BMS AFE": "LTC6811-1"}, {"BMS AFE": "BQ79656PAPRQ1"}, 55, draws=draws, library=lib)
+    assert cmp.p_b_outlasts_a == pytest.approx(101758 / (101758 + 37101), abs=0.02)
+
+
+def test_p_outlasts_ties_and_swap():
+    a, b = np.array([1.0, 2.0, 3.0, 4.0]), np.array([2.0, 2.0, 1.0, 1.0])
+    assert p_outlasts(a, b) == pytest.approx(0.625)            # 2 wins, 1 tie, 1 loss
+    assert p_outlasts(a, b) + p_outlasts(b, a) == pytest.approx(1.0)
+
+
+def test_differences_are_paired_draws(lib, draws):
+    # E11 per draw: delta FIT equals the FIT of the swapped slot's difference, draw by draw
+    b_cfg = {**TI_ALL, "BMS AFE": "LTC6811-1"}
+    cmp = compare(TI_ALL, b_cfg, 55, draws=draws, library=lib)
+    per_draw = (cmp.b.lam["BMS AFE"] - cmp.a.lam["BMS AFE"]) * 1e9
+    assert diff(cmp, "fit") == pytest.approx(np.median(per_draw))
+    assert diff(cmp, "fit", "a_median") == pytest.approx(value(cmp.a.system, "fit"))
+    # Less test evidence for LTC6811-1 -> higher FIT, so B is worse and P(B outlasts A) < 0.5
+    assert diff(cmp, "fit") > 0
+    assert cmp.p_b_outlasts_a < 0.5
+
+
+def test_compare_different_slots_allowed(lib, draws):
+    cmp = compare({"ECU MCU": "F280049CPZQR"}, TI_ALL, 55, draws=draws, library=lib)
+    # Adding parts in series can only raise the rate, on every draw
+    assert np.all(cmp.b.lam_sys >= cmp.a.lam_sys)
+    assert cmp.p_b_outlasts_a == 0.0
+    assert cmp.settings["config_a"] == {"ECU MCU": "F280049CPZQR"}

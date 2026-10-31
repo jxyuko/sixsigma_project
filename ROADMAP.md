@@ -325,7 +325,8 @@ computed draw by draw, then summarized as a median and 95% CI.
   E[failures] = N · F_sys(t_w);  Cost = E[failures] · C_fail
 
 **E13 · Probability B outlasts A.**  P(B0.1,B > B0.1,A) = P(λ_sys,B < λ_sys,A), estimated as the
-share of paired draws where it's true. Closed-form check: for two single zero-failure parts 1
+share of paired draws where it's true. Ties (identical draws, e.g. comparing a configuration with
+itself) count as half, so self-comparison gives exactly 0.5. Closed-form check: for two single zero-failure parts 1
 and 2 at the same T_test (so they share an AF), the probability that part 1 has the lower failure
 rate is P(λ_1 < λ_2) = D_1 / (D_1 + D_2).
 
@@ -532,7 +533,7 @@ Each milestone ends with its tests passing and this file updated.
 | M1 ✅ | Component library | `data/components.csv` (19 parts, 17 usable), `data/codebook.md`, `functions/library.py`; 16 tests in `tests/test_library.py` pass |
 | M2 ✅ | Equation functions (E1–E10, E14) and Monte Carlo draws (A2, A5) | 11a tests for these pass (50 tests in total) |
 | M3 ✅ | Simulator Mode 1 `evaluate()` | Component + system outputs with CIs for any 1–6 slot configuration and any profile; 18 tests in `tests/test_simulator.py` (68 in total) |
-| M4 | Simulator Mode 2 `compare()` | A, B, differences and P(B outlasts A); self-comparison checks pass |
+| M4 ✅ | Simulator Mode 2 `compare()` | A, B, differences and P(B outlasts A); self-comparison checks pass; 23 tests in `tests/test_simulator.py` (73 in total) |
 | M5 | Verification | All 11a tests pass (11b on hold) |
 | M6 | Real-result validation | 11c–11e done, reference data cited |
 | M7 | Results + financial | Section 9 and 10 tables and figures in `results/` |
@@ -592,3 +593,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-10-31 | M2 done. `functions/arrhenius.py` adds `effective_af()` (E6, vectorized over Ea draws) and `draw_ea()` (A2). `functions/evidence.py` adds `draw_lambda()` (E4/A5, uniform or Jeffreys prior). New `functions/reliability.py` (E7–E10, E14). Tests: E6 one-bin degenerate, the 40/70/105 °C example (AF_eff 12.29 vs 46.30), the Tencer T_aa equivalence, the Gamma 60th percentile vs the chi-square bound (f = 0, 1, 3), 6.21 FIT from draws, series sum/product, R(B0.1) = 0.999, warranty ratio and P(WR ≥ 1). 50 tests pass. |
 | 2026-10-31 | M3 done. New `functions/simulator.py`: `draw_library()` (8a, per-family draws for common random numbers, shared or independent Ea), `evaluate()` (Mode 1: component AF_eff, D, FIT, MTTF, R(t_w) and the 60% datasheet-style FIT; system FIT, MTTF, R(t_w), B0.1, WR, P(WR ≥ 1), all as median + 95% CI), `reliability_band()`, `qi()`, `failure_time_check()` (8c). A7 placeholder warranty 2,920 h (8 yr × 1 h/day, unsourced). 8c tolerance set to 5% from the MC error. All-TI at 55 °C: system FIT 7.0 (95% CI 1.1–40), B0.1 142,000 h, WR 49, P(WR ≥ 1) = 1.00; on the 40/70/105 °C profile: FIT 46 (8.7–186), WR 7.5 (1.8–39), P = 0.999. 68 tests pass. |
 | 2026-10-31 | Team decision (A7): the 2,920 h warranty (8 yr × 1 powered-on h/day) is adopted as one warranty for the whole system, no longer a placeholder. Source for 1 h/day still to cite. |
+| 2026-10-31 | M4 done. `functions/simulator.py` adds `compare()` (Mode 2: both configurations on one set of draws, E11 differences per draw for every system metric, P(meets warranty) for each), `p_outlasts()` (E13, ties count half) and `system_draws()` (shared by `evaluate()` and `compare()`). Tests: self-comparison gives Δ = 0 and P = 0.5; LTC6811-1 vs BQ79656 matches the closed form D_B/(D_A+D_B) = 0.733; paired per-draw differences; adding slots never lowers λ_sys. Example at 55 °C, A = all-TI: B = RH850 MCU gives system FIT 13.7 vs 7.0, P(B outlasts A) = 0.29; B = ADI AFE + isolator + gate driver gives 7.9 vs 7.0, P = 0.09. 73 tests pass. |
