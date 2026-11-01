@@ -13,14 +13,13 @@
 import sys
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT))
+sys.path.append(str(Path(__file__).resolve().parent))
+import plots  # noqa: E402  (plotnine figures, analysis/plots.py)
 from functions.candidates import CONFIDENCE, library_candidate, p_best, select  # noqa: E402
 from functions.library import SLOTS, load_library  # noqa: E402
 from functions.simulator import DEFAULT_WARRANTY_HOURS, N_DRAWS, SEED  # noqa: E402
@@ -40,23 +39,6 @@ SWEEP = np.arange(25, 151, 5)
 # One part per qualification family (A9): family members share one dataset and give identical results
 CANDIDATES = ["F280049CPZQR", "R7F7016903AFP-C", "BQ79656PAPRQ1", "LTC6811-1", "ISO7741QDWRQ1",
               "ADuM141E", "TMP4719QDGSRQ1", "UCC21750QDWRQ1", "ADuM4135", "TMCS1101A4UQDRQ1"]
-
-# Reference palette (categorical slots 1-3 by supplier, fixed order), text and surface tokens
-SUPPLIER_COLORS = {"Texas Instruments": "#2a78d6", "Analog Devices": "#eb6834", "Renesas Electronics": "#1baf7a"}
-BLUE, ORANGE = "#2a78d6", "#eb6834"
-INK, INK_2, GRID, SURFACE = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb"
-
-
-def style(ax, grid_axis="y"):
-    ax.set_facecolor(SURFACE)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color(INK_2)
-    ax.tick_params(colors=INK_2, labelsize=9)
-    ax.grid(axis=grid_axis, color=GRID, linewidth=0.8)
-    ax.set_axisbelow(True)
-
 
 def run(profile=T_REF, mission=MISSION, **kw):
     cands = [library_candidate(p) for p in CANDIDATES]
@@ -172,84 +154,6 @@ def sensitivity(best, base_value):
                           "swing": abs(hi - lo)} for a, lo, hi in rows])
 
 
-# --- Figures ---------------------------------------------------------------------------------------------
-
-def figure_forest(t1, path):
-    t = t1.copy()
-    t["slot"] = pd.Categorical(t["slot"], categories=SLOTS, ordered=True)
-    t = t.sort_values(["slot", "fit_median"], ascending=[False, False]).reset_index(drop=True)
-    y = np.arange(len(t))
-    fig, ax = plt.subplots(figsize=(8, 5.4), facecolor=SURFACE)
-    style(ax, "x")
-    ax.set_xscale("log")
-    for i, r in t.iterrows():
-        col = SUPPLIER_COLORS[r["supplier"]]
-        ax.hlines(i, r["fit_lower"], r["fit_upper"], color=col, linewidth=2)
-        ax.plot(r["fit_median"], i, "o", color=col, markersize=8, markeredgecolor=SURFACE, markeredgewidth=2)
-    ax.set_yticks(y, [f"{r['slot']}: {r['part']}" for _, r in t.iterrows()])
-    for s in range(1, len(t)):
-        if t.loc[s, "slot"] != t.loc[s - 1, "slot"]:
-            ax.axhline(s - 0.5, color=GRID, linewidth=0.8)
-    handles = [plt.Line2D([], [], color=c, marker="o", linewidth=2, markersize=7, label=n)
-               for n, c in SUPPLIER_COLORS.items()]
-    ax.legend(handles=handles, frameon=False, fontsize=8, loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3)
-    ax.set_xlabel("FIT at 55 C, median and 95% CI (log scale)", color=INK, fontsize=9)
-    ax.set_title("Every candidate on one basis: 55 C", color=INK, fontsize=11, loc="left", pad=26)
-    fig.tight_layout()
-    fig.savefig(path, dpi=200)
-    plt.close(fig)
-
-
-def figure_sweep(sw, path):
-    fig, axes = plt.subplots(1, 2, figsize=(10, 4.2), facecolor=SURFACE)
-    for (label, col) in (("most reliable", BLUE), ("least reliable", ORANGE)):
-        d = sw[sw["system"] == label]
-        ax = axes[0]
-        ax.fill_between(d["temperature_c"], d["failures_per_1000_lower"], d["failures_per_1000_upper"],
-                        color=col, alpha=0.15, linewidth=0)
-        ax.plot(d["temperature_c"], d["failures_per_1000_median"], color=col, linewidth=2, label=f"{label} system")
-        axes[1].plot(d["temperature_c"], 100 * d["p_meets_target"], color=col, linewidth=2, label=f"{label} system")
-    target_failures = FLEET * (1 - TARGET)
-    style(axes[0])
-    axes[0].set_yscale("log")
-    axes[0].axhline(target_failures, color=INK_2, linestyle="--", linewidth=1)
-    axes[0].text(26, target_failures * 1.15, "target: 1 per 1,000", color=INK_2, fontsize=8)
-    axes[0].set_xlabel("Operating temperature (C)", color=INK, fontsize=9)
-    axes[0].set_ylabel(f"Failures per 1,000 vehicles in {MISSION:,.0f} h (log)", color=INK, fontsize=9)
-    axes[0].set_title("Expected failures, median and 95% CI", color=INK, fontsize=10, loc="left")
-    style(axes[1])
-    axes[1].axhline(100 * CONFIDENCE, color=INK_2, linestyle="--", linewidth=1)
-    axes[1].text(150, 100 * CONFIDENCE - 5, "95% confidence needed", color=INK_2, fontsize=8, ha="right")
-    axes[1].set_ylim(0, 105)
-    axes[1].set_xlabel("Operating temperature (C)", color=INK, fontsize=9)
-    axes[1].set_ylabel("P(system meets R >= 0.999), %", color=INK, fontsize=9)
-    axes[1].set_title("Chance of meeting the target", color=INK, fontsize=10, loc="left")
-    axes[1].legend(frameon=False, fontsize=8, loc="lower left")
-    fig.tight_layout()
-    fig.savefig(path, dpi=200)
-    plt.close(fig)
-
-
-def figure_tornado(sens, path):
-    s = sens.sort_values("swing").reset_index(drop=True)
-    base = s["base"].iloc[0]
-    fig, ax = plt.subplots(figsize=(8, 3.8), facecolor=SURFACE)
-    style(ax, "x")
-    for i, r in s.iterrows():
-        lo, hi = sorted((r["low_setting"], r["high_setting"]))
-        ax.barh(i, hi - lo, left=lo, color=BLUE, height=0.55)
-        ax.text(hi, i, f"  {lo:.3f} - {hi:.3f}", va="center", color=INK_2, fontsize=8)
-    ax.axvline(base, color=INK, linewidth=1)
-    ax.text(base, -0.75, f" base {base:.3f}", color=INK, fontsize=8, va="center")
-    ax.set_ylim(-1, len(s) - 0.5)
-    ax.set_yticks(range(len(s)), s["assumption"])
-    ax.set_xlabel(f"Median failures per 1,000 vehicles in {MISSION:,.0f} h, most reliable system", color=INK, fontsize=9)
-    ax.set_title("Sensitivity: one assumption changed at a time", color=INK, fontsize=11, loc="left")
-    fig.tight_layout()
-    fig.savefig(path, dpi=200)
-    plt.close(fig)
-
-
 # --- Summary text for writing the report ----------------------------------------------------------------
 
 def summary(sel, t2, best, worst, sw, prof, sens, sup, cov, briers):
@@ -337,9 +241,10 @@ if __name__ == "__main__":
     sw.to_csv(TABLES / "temperature_sweep.csv", index=False)
     prof.to_csv(TABLES / "profile_vs_mean_temperature.csv", index=False)
     sens.to_csv(TABLES / "sensitivity.csv", index=False)
-    figure_forest(t1, FIGURES / "figure1_fit_common_basis.png")
-    figure_sweep(sw, FIGURES / "figure2_temperature_sweep.png")
-    figure_tornado(sens, FIGURES / "figure3_sensitivity.png")
+    plots.figure1_forest(t1, FIGURES / "figure1_fit_common_basis.png")
+    plots.figure2a_failures(sw, FIGURES / "figure2a_temperature_failures.png", FLEET * (1 - TARGET), MISSION)
+    plots.figure2b_probability(sw, FIGURES / "figure2b_temperature_target.png", CONFIDENCE)
+    plots.figure3_tornado(sens, FIGURES / "figure3_sensitivity.png", MISSION)
     (OUT / "key_numbers.md").write_text(summary(sel, t2, best, worst, sw, prof, sens, sup, cov, briers),
                                          encoding="utf-8")
-    print(f"Wrote {OUT.relative_to(ROOT)}: 8 tables, 3 figures, key_numbers.md")
+    print(f"Wrote {OUT.relative_to(ROOT)}: 8 tables, 4 figures (plotnine), key_numbers.md")

@@ -47,7 +47,9 @@ Code and results come first. A user interface comes later and must call the same
 ## Rules
 
 - **Python only**, in `.venv` (`.venv/Scripts/python`). Write plain functions in `functions/` and
-  numbered scripts in `code/`.
+  numbered scripts in `code/`; report analyses go in `analysis/` (they only call `functions/`).
+- **Figures use plotnine** (ggplot grammar), all in `analysis/plots.py`, so the team can run them in
+  Posit Cloud.
 - **Every statistic gets a test in `tests/`** with a known answer and a degenerate case before it
   is used in results. Known answer: TI C2000 F280049, n=1900, t=1000 h, 125 to 55 C, Ea=0.7,
   CL=60%, f=0 gives 6.21 FIT (TI publishes 6.19).

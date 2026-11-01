@@ -19,14 +19,13 @@
 import sys
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT))
+sys.path.append(str(Path(__file__).resolve().parent))
+import plots  # noqa: E402  (plotnine figures, analysis/plots.py)
 from functions.arrhenius import accel_factor  # noqa: E402
 from functions.candidates import library_candidate, select  # noqa: E402
 from functions.library import SLOTS  # noqa: E402
@@ -45,32 +44,6 @@ PROFILE = [(40, 0.5), (70, 0.3), (105, 0.2)]
 SEEDS = range(1, 21)
 CANDIDATES = ["F280049CPZQR", "R7F7016903AFP-C", "BQ79656PAPRQ1", "LTC6811-1", "ISO7741QDWRQ1",
               "ADuM141E", "TMP4719QDGSRQ1", "UCC21750QDWRQ1", "ADuM4135", "TMCS1101A4UQDRQ1"]
-
-SUPPLIER_COLORS = {"Texas Instruments": "#2a78d6", "Analog Devices": "#eb6834", "Renesas Electronics": "#1baf7a"}
-BLUE, ORANGE, AQUA = "#2a78d6", "#eb6834", "#1baf7a"
-INK, INK_2, GRID, SURFACE, MUTED = "#0b0b0b", "#52514e", "#e4e3df", "#fcfcfb", "#a3a29c"
-
-
-def style(ax, grid_axis="y"):
-    ax.set_facecolor(SURFACE)
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color(INK_2)
-    ax.tick_params(colors=INK_2, labelsize=9)
-    ax.grid(axis=grid_axis, color=GRID, linewidth=0.8)
-    ax.set_axisbelow(True)
-
-
-def title(ax, text, pad=6):
-    ax.set_title(text, color=INK, fontsize=11, loc="left", pad=pad)
-
-
-def save(fig, name):
-    fig.tight_layout()
-    fig.savefig(FIGURES / name, dpi=200)
-    plt.close(fig)
-
 
 def candidates():
     return [library_candidate(p) for p in CANDIDATES]
@@ -243,156 +216,6 @@ def p2d_profile(best):
                           "p_ratio_le_1": float(np.mean(ratio <= 1))}])
 
 
-# ===================================== Figures ================================================
-
-def fig_chi_square(a):
-    fig, ax = plt.subplots(figsize=(5.6, 5.2), facecolor=SURFACE)
-    style(ax, "both")
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    lo, hi = a["chi_square_fit95"].min() / 2, a["chi_square_fit95"].max() * 2
-    ax.plot([lo, hi], [lo, hi], color=INK_2, linestyle="--", linewidth=1)
-    ax.text(hi / 1.3, hi / 1.05, "simulator = formula", color=INK_2, fontsize=8, ha="right", va="top", rotation=45)
-    for _, r in a.iterrows():
-        ax.plot(r["chi_square_fit95"], r["simulator_fit95_mean"], "o", color=SUPPLIER_COLORS[r["supplier"]],
-                markersize=8, markeredgecolor=SURFACE, markeredgewidth=2)
-    handles = [plt.Line2D([], [], color=c, marker="o", linestyle="", markersize=7, label=n)
-               for n, c in SUPPLIER_COLORS.items()]
-    ax.legend(handles=handles, frameon=False, fontsize=8, loc="upper left")
-    ax.set_xlabel("95% maximum FIT, course chi-square formula", color=INK, fontsize=9)
-    ax.set_ylabel("95% FIT from the simulator (mean of 20 seeds)", color=INK, fontsize=9)
-    title(ax, f"1a. Simulator vs chi-square: max difference {a['difference_pct'].abs().max():.1f}%")
-    save(fig, "sig_1a_simulator_vs_chi_square.png")
-
-
-def fig_published(fam, summary):
-    f = fam.sort_values("log10_ratio").reset_index(drop=True)
-    s = summary.iloc[0]
-    fig, ax = plt.subplots(figsize=(7.5, 4.4), facecolor=SURFACE)
-    style(ax, "x")
-    ax.set_xscale("log")
-    ax.axvspan(s["ratio_lower"], s["ratio_upper"], color=BLUE, alpha=0.12, linewidth=0)
-    ax.axvline(1, color=INK_2, linestyle="--", linewidth=1)
-    for i, r in f.iterrows():
-        if r["same_basis"]:
-            ax.plot(r["ratio"], i, "o", color=BLUE, markersize=8, markeredgecolor=SURFACE, markeredgewidth=2)
-        else:
-            ax.plot(r["ratio"], i, "o", markerfacecolor=SURFACE, markeredgecolor=MUTED, markersize=7, markeredgewidth=1.5)
-    ax.set_yticks(range(len(f)), f["family"])
-    handles = [plt.Line2D([], [], color=BLUE, marker="o", linestyle="", markersize=7,
-                          label="TI: same test data as published"),
-               plt.Line2D([], [], color=MUTED, marker="o", linestyle="", markerfacecolor=SURFACE, markersize=7,
-                          label="published value rests on other data (Section 14)"),
-               plt.Rectangle((0, 0), 1, 1, color=BLUE, alpha=0.12, label="95% CI of the TI mean ratio")]
-    ax.legend(handles=handles, frameon=False, fontsize=8, loc="lower left", bbox_to_anchor=(0, 1.0), ncol=1)
-    ax.set_xlabel("Simulated / published FIT at 55 C, 60% (log scale; 1 = identical)", color=INK, fontsize=9)
-    title(ax, f"1b. Simulator vs published FIT\nTI mean ratio {s['mean_ratio']:.2f} (95% CI "
-              f"{s['ratio_lower']:.2f}-{s['ratio_upper']:.2f}), one-sample t-test p = {s['p_value']:.2f}", pad=58)
-    save(fig, "sig_1b_simulator_vs_published.png")
-
-
-def fig_coverage(cov):
-    d = cov[(cov["truth"] == "log-uniform") & (cov["expected_failures"] != "all")].reset_index(drop=True)
-    x = np.arange(len(d))
-    fig, ax = plt.subplots(figsize=(7.5, 4.4), facecolor=SURFACE)
-    style(ax)
-    for off, col, key, label in ((-0.12, BLUE, "central", "central 95% interval"),
-                                 (0.12, ORANGE, "upper", "upper 97.5% bound")):
-        y = 100 * d[f"{key}_95_coverage" if key == "central" else "upper_975_coverage"]
-        lo, hi = 100 * d[f"{key}_lower"], 100 * d[f"{key}_upper"]
-        ax.errorbar(x + off, y, yerr=[y - lo, hi - y], fmt="o", color=col, markersize=7, capsize=3,
-                    linewidth=1.5, markeredgecolor=SURFACE, label=label)
-    ax.axhline(95, color=BLUE, linestyle="--", linewidth=1)
-    ax.axhline(97.5, color=ORANGE, linestyle=":", linewidth=1)
-    ax.text(0.45, 89, "nominal 95% (dashed) / 97.5% (dotted)", color=INK_2, fontsize=8, ha="center")
-    ax.set_xticks(x, [f"{b}\n({n} suppliers)" for b, n in zip(d["expected_failures"], d["suppliers"])])
-    ax.set_xlim(-0.5, len(d) - 0.5)
-    ax.set_ylim(0, 105)
-    ax.set_xlabel("Failures the test was expected to see", color=INK, fontsize=9)
-    ax.set_ylabel("Coverage of the true FIT, % (exact 95% CI)", color=INK, fontsize=9)
-    ax.legend(frameon=False, fontsize=8, loc="lower right")
-    title(ax, "1c. Do the simulator's intervals contain the truth? (1,000 known-truth suppliers)")
-    save(fig, "sig_1c_coverage.png")
-
-
-def fig_calibration(bins, briers):
-    fig, ax = plt.subplots(figsize=(5.6, 5.2), facecolor=SURFACE)
-    style(ax, "both")
-    ax.plot([0, 1], [0, 1], color=INK_2, linestyle="--", linewidth=1)
-    for (truth, col), off in zip((("uniform", BLUE), ("log-uniform", ORANGE)), (-0.006, 0.006)):
-        d = bins[bins["truth"] == truth]
-        b = briers.set_index("truth").loc[truth]
-        y = d["share_b_truly_better"]
-        ax.errorbar(d["mean_p_b_outlasts_a"] + off, y, yerr=[y - d["lower"], d["upper"] - y], fmt="o-", color=col,
-                    markersize=6, capsize=3, linewidth=1.5, markeredgecolor=SURFACE,
-                    label=f"true FIT {truth}: Brier {b['brier']:.2f} ({b['brier_lower']:.2f}-{b['brier_upper']:.2f})")
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1)
-    ax.set_xlabel("Simulator's P(B outlasts A), binned", color=INK, fontsize=9)
-    ax.set_ylabel("Share of pairs where B is truly better (95% CI)", color=INK, fontsize=9)
-    ax.legend(frameon=False, fontsize=8, loc="upper left")
-    title(ax, "1d. Calibration of P(B outlasts A); a coin flip scores 0.25")
-    save(fig, "sig_1d_calibration.png")
-
-
-def fig_parts(p):
-    d = p.copy()
-    d["slot"] = pd.Categorical(d["slot"], categories=SLOTS, ordered=True)
-    d = d.sort_values(["slot", "fit95_max"], ascending=[False, False]).reset_index(drop=True)
-    target = d["target_fit"].iloc[0]
-    fig, ax = plt.subplots(figsize=(8, 5), facecolor=SURFACE)
-    style(ax, "x")
-    ax.set_xscale("log")
-    for i, r in d.iterrows():
-        ax.plot(r["fit95_max"], i, "o", color=SUPPLIER_COLORS[r["supplier"]], markersize=8,
-                markeredgecolor=SURFACE, markeredgewidth=2)
-    ax.axvline(target, color=INK_2, linestyle="--", linewidth=1)
-    ax.text(target, len(d) - 0.4, f"target: {target:.0f} FIT \n(R = 0.999 over 2,920 h) ", color=INK_2, fontsize=8,
-            va="top", ha="right")
-    ax.set_yticks(range(len(d)), [f"{r['slot']}: {r['part']}" for _, r in d.iterrows()])
-    ax.set_xlim(right=target * 4)
-    handles = [plt.Line2D([], [], color=c, marker="o", linestyle="", markersize=7, label=n)
-               for n, c in SUPPLIER_COLORS.items()]
-    ax.legend(handles=handles, frameon=False, fontsize=8, loc="lower left", bbox_to_anchor=(0, 1.0), ncol=3)
-    ax.set_xlabel("95% maximum failure rate at 55 C, FIT (chi-square; left of the line = target demonstrated)",
-                  color=INK, fontsize=9)
-    title(ax, "2a. Every part demonstrates the target at 55 C (all p < 0.001)", pad=26)
-    save(fig, "sig_2a_max_failure_rate.png")
-
-
-def fig_max_temp(p, sysrows):
-    d = p.copy()
-    d["slot"] = pd.Categorical(d["slot"], categories=SLOTS, ordered=True)
-    d = d.sort_values(["slot", "max_demonstrated_temp_c"], ascending=[False, True]).reset_index(drop=True)
-    labels = [f"{r['slot']}: {r['part']}" for _, r in d.iterrows()]
-    values = list(d["max_demonstrated_temp_c"])
-    colors = [SUPPLIER_COLORS[s] for s in d["supplier"]]
-    for _, r in sysrows.iloc[::-1].iterrows():
-        labels.append(f"SYSTEM, {r['system']}")
-        values.append(r["max_demonstrated_temp_c"])
-        colors.append(INK_2)
-    fig, ax = plt.subplots(figsize=(9, 5.8), facecolor=SURFACE)
-    style(ax, "x")
-    y = np.arange(len(values))
-    ax.barh(y, values, color=colors, height=0.6)
-    for i, v in enumerate(values):
-        ax.text(v, i, f" {v:.0f} C", va="center", color=INK_2, fontsize=8)
-    ax.axvline(T_REF, color=INK, linewidth=1)
-    ax.text(T_REF, len(values) - 0.3, " 55 C reference", color=INK, fontsize=8)
-    ax.axvline(150, color=INK_2, linestyle="--", linewidth=1)
-    ax.text(150, len(values) - 0.3, "150 C: usual automotive limit ", color=INK_2, fontsize=8, ha="right")
-    ax.axhline(len(d) - 0.5, color=GRID, linewidth=1)
-    ax.set_yticks(y, labels)
-    ax.set_xlim(0, max(values) * 1.15)
-    handles = [plt.Rectangle((0, 0), 1, 1, color=c, label=n) for n, c in SUPPLIER_COLORS.items()] + \
-              [plt.Rectangle((0, 0), 1, 1, color=INK_2, label="system (Monte Carlo)")]
-    ax.legend(handles=handles, frameon=False, fontsize=8, loc="lower left", bbox_to_anchor=(0, 1.0), ncol=4)
-    ax.set_xlabel("Highest temperature (C) at which R(2,920 h) >= 0.999 is demonstrated with 95% confidence",
-                  color=INK, fontsize=9)
-    title(ax, "2b. Maximum demonstrated temperature", pad=26)
-    save(fig, "sig_2b_max_demonstrated_temperature.png")
-
-
 # ===================================== Key numbers ============================================
 
 def key_numbers(a, pub_sum, cov, briers, mc, parts, sysrows, sup, prof):
@@ -470,12 +293,12 @@ if __name__ == "__main__":
                      "sig_2a_parts_target_test": parts, "sig_2b_system_target_test": sysrows,
                      "sig_2c_supplier_tests": sup, "sig_2d_profile_vs_mean": prof}.items():
         df.to_csv(TABLES / f"{name}.csv", index=False)
-    fig_chi_square(a)
-    fig_published(fam, pub_sum)
-    fig_coverage(cov)
-    fig_calibration(cal_bins, briers)
-    fig_parts(parts)
-    fig_max_temp(parts, sysrows)
+    plots.sig_1a_chi_square(a, FIGURES / "sig_1a_simulator_vs_chi_square.png")
+    plots.sig_1b_published(fam, pub_sum, FIGURES / "sig_1b_simulator_vs_published.png")
+    plots.sig_1c_coverage(cov, FIGURES / "sig_1c_coverage.png")
+    plots.sig_1d_calibration(cal_bins, briers, FIGURES / "sig_1d_calibration.png")
+    plots.sig_2a_max_rate(parts, FIGURES / "sig_2a_max_failure_rate.png")
+    plots.sig_2b_max_temp(parts, sysrows, FIGURES / "sig_2b_max_demonstrated_temperature.png", T_REF)
     (OUT / "key_numbers_significance.md").write_text(
         key_numbers(a, pub_sum, cov, briers, mc, parts, sysrows, sup, prof), encoding="utf-8")
-    print(f"Wrote {OUT.relative_to(ROOT)}: 11 tables, 6 figures, key_numbers_significance.md")
+    print(f"Wrote {OUT.relative_to(ROOT)}: 11 tables, 6 figures (plotnine), key_numbers_significance.md")
