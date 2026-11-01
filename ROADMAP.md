@@ -409,6 +409,19 @@ confidence only if its test evidence is at least n · t ≥ −ln(0.05) / (λ* �
 125 °C test) = 0.039, so n · t ≥ 7.6×10⁷ device-hours. TI C2000 has 1.9×10⁶ (40× short); UCC21750 has
 8.7×10⁷ (passes).
 
+**E18 · Maximum failure rate (course chi-square k-factor method).** One-sided (1 − α) upper bound on an
+exponential rate from f failures in D device-hours at the use condition: f = 0 → λ₁₋α = −ln(α)/D;
+f ≥ 1 → λ̂ · k with λ̂ = f/D and k = χ²(1 − α; 2(f + 1)) / (2f). Both equal χ²(1 − α; 2f + 2)/(2D) (E4).
+
+**E19 · Target test.** H₀: λ ≥ λ* (target not met), λ* = −ln(R*)/t_m. Exact p-value = P(X ≤ f) with
+X ~ Poisson(λ* D). Reject at α ⇔ λ₁₋α < λ*. Minimum MTTF = 1/λ₁₋α; minimum R(t_m) = exp(−λ₁₋α t_m).
+
+**E20 · Maximum demonstrated temperature.** The use temperature at which E18 equals λ*:
+AF_needed = χ²(1 − α; 2f + 2)/(2 n t λ*), then 1/T = 1/T_test + k ln(AF_needed)/Ea (inverse of E2).
+
+**E21 · Two-rate test.** Exact conditional test that two Poisson rates are equal: given f₁ + f₂
+failures, f₂ ~ Binomial(f₁ + f₂, D₂/(D₁ + D₂)) under H₀. With f₁ = f₂ = 0, p = 1 (no evidence).
+
 ## 8. Simulation engine
 
 The course pattern (`ZZ_financial_analysis.py`) bootstraps raw observations. **We have no raw
@@ -482,6 +495,37 @@ exposure as failures per 1,000 vehicles; no costs here (Section 10 is deferred).
   roughly 2× either way; the prior moves them 2.5× lower (Jeffreys); Ea treatment and MC seed are
   negligible (< 5%).
 - **Validation:** as in 11b and 11e.
+
+## 9b. Significance and confidence (Preliminary Results)
+
+`analysis/02_significance.py` (kept apart from the simulator; statistics in `functions/significance.py`,
+tests in `tests/test_significance.py`) writes `sig_*` tables and figures and
+`key_numbers_significance.md` to `reports/preliminary_results/`. Course methods only: exponential
+chi-square bounds (k-factors), one-sample t-test, proportion CIs and the percentile bootstrap.
+
+**Part 1, statistics about the simulator (is it trustworthy?), results 2026-11-01:**
+
+| # | Test | Result |
+|---|---|---|
+| 1a | Simulator vs course chi-square formula (E18), 95% max FIT, 10 parts, 20 seeds | largest difference 0.65%, all within Monte Carlo error |
+| 1b | Simulator vs published TI FIT, one-sample t-test on log10(simulated / published), 6 families | mean ratio 0.91 (95% CI 0.70–1.20), t = −0.88, p = 0.42: not significantly different |
+| 1c | Coverage of the 95% intervals, exact (Clopper-Pearson) CIs, binomial test vs nominal | realistic world: central interval 94.0%, 96.2%, 95.3% (all p ≥ 0.46) once ≥ 0.1 failures are expected, 36.8% below that; upper bound 99.8% (99.3–100%). Model-consistent world: 95.3% overall (p = 0.72) |
+| 1d | Calibration of P(B outlasts A), Brier score with bootstrap 95% CI | 0.119 (0.105–0.133) model-consistent, 0.186 (0.168–0.204) realistic; coin flip 0.25 |
+| 1e | Monte Carlo error over 20 seeds | system FIT and failures per 1,000 vary 2.0% per run; lower bound on R 0.0003% |
+
+**Part 2, what the simulator concludes on our data (55 °C, 2,920 h, R* = 0.999), results 2026-11-01:**
+
+| # | Test | Result |
+|---|---|---|
+| 2a | Per part, 95% maximum failure rate and target test (E18, E19) | all 10 parts demonstrate the target (largest p = 1.2×10⁻⁹); 95% max FIT 0.38–50 vs target 343 FIT |
+| 2a | Maximum demonstrated temperature per part (E20) | RH850 83 °C, C2000 97 °C, TMCS1101 121 °C, ADuM4135 152 °C, ADuM141E and LTC6811 155 °C, ISO7741 and UCC21750 176 °C, TMP4719 and BQ79656 179 °C (values above 150 °C exceed usual automotive ratings) |
+| 2b | System 95% lower bound on R and target test (Monte Carlo); max demonstrated temperature (bisection) | most reliable (all-TI): R_L = 0.999913, p < 0.0002, demonstrated up to 95 °C; least reliable: R_L = 0.999766, up to 78 °C |
+| 2c | Supplier differences per slot: exact two-rate test (E21) and simulation p | no difference significant at 0.05 (exact p = 1.00, 1.00, 0.40, 1.00; simulation p 0.15–0.30): zero-failure tests cannot separate the suppliers |
+| 2d | 40/70/105 °C profile vs its 62 °C mean, paired ratio of system failure rate | 3.77× (95% CI 2.33–6.46), P(ratio ≤ 1) < 0.001: significant |
+
+**Reading:** the simulator is verified (1a), agrees with published values (1b), and its upper bounds
+are valid (1c), so the demonstrated-reliability conclusions (2a, 2b) can be trusted; supplier rankings
+(2c) are not statistically significant, and the temperature profile effect (2d) is.
 
 ## 10. Financial model
 
@@ -675,7 +719,9 @@ code/
   03_validation.py    Section 11b and 11e → validation tables and figures
 analysis/                report material, kept apart from the simulator (only calls functions/)
   01_preliminary_results.py   Section 9 → reports/preliminary_results/ (tables, figures, key_numbers.md)
-  02_financial_impacts.py     Section 10 → reports/financial_impacts/   [LATER]
+  02_significance.py          Section 9b → reports/preliminary_results/ (sig_* tables and figures,
+                              key_numbers_significance.md); statistics in functions/significance.py
+  (Financial Impacts: not planned for now, Section 10)
 reports/
   preliminary_results/, financial_impacts/   report tables, figures and the .docx deliverables
 data/reference/
@@ -711,6 +757,7 @@ Each milestone ends with its tests passing and this file updated.
 | M6b ✅ | Mode 3: supplier selection | `select()` for any number of user candidates per slot (raw HTOL data or report FIT/MTTF), requirement check, P(best), ranked combinations and warranty exposure; in the run script; 19 tests in `tests/test_candidates.py` (113 in total) |
 | M6c ✅ | One user-facing simulator | `code/02_run_simulator.py` runs supplier selection only (no library picking), required vs optional inputs, summary first, warranty exposure per 1,000 vehicles with Sheet2 prices; 117 tests |
 | M7a ✅ | Preliminary Results analysis | Section 9 tables and figures in `reports/preliminary_results/` from `analysis/01_preliminary_results.py`; 120 tests |
+| M7c ✅ | Significance and confidence | Section 9b: simulator verification and validation statistics, chi-square target tests, max demonstrated temperature, supplier tests, profile effect; 6 figures; 135 tests |
 | M7b | Financial Impacts analysis `[LATER]` | Section 10 before/after cost with CIs in `reports/financial_impacts/` |
 | M8 | Reports | Preliminary Results and Financial Impacts .docx in `reports/` |
 | M9 | User interface `[LATER]` | Front end over `evaluate()` / `compare()` |
@@ -778,3 +825,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-10-31 | The simulator is for users' own inputs: result files from our test and validation runs on the original data (validation tables/figures, demo runs) are not committed; `code/03_validation.py` regenerates them. Mode 3 printed tables now show MTTF and B0.1 with 95% CIs and warranty failures next to cost. 114 tests pass. |
 | 2026-10-31 | Team decisions: (1) users see only the supplier-selection simulator; the library is used to build and test it, and `evaluate()`/`compare()` remain only as the validation engine (Modes 1–2 removed from the run script); (2) warranty exposure without inputs the user may not know (A14): per 1,000 vehicles, unit prices from Sheet2 (new `data/prices.csv`, 30 parts + 6 slot averages; the current-sensor average has no listed rows), cost per failure = unit price (parts-only lower bound) unless a repair cost is given, total cost = purchase + warranty, lowest-cost combination reported. Run script rewritten: only temperature, mission hours and candidates are required; output is SUMMARY → key table → details on request. Arguments now `--temp --hours --candidates [--target --fleet --repair-cost --warranty-hours --details]`. 117 tests pass. |
 | 2026-11-01 | M7a done. Team decisions: report analyses live apart from the simulator (`analysis/` → `reports/`); main condition 55 °C, 2,920 h, target 0.999; Financial Impacts deferred; a cited repair cost kept as a suggestion; costs per 1,000 vehicles only. New `analysis/01_preliminary_results.py`: Tables 1–4, Figures 1–3, temperature sweep, profile vs mean, sensitivity, `key_numbers.md` (results in Section 9). `select()` gains `ea_mode` (shared / independent / fixed) for the sensitivity. New `tests/test_analysis.py` (paired ratio: identical evidence → 1, known answer D_ti/D_alt). 120 tests pass. |
+| 2026-11-01 | M7c: significance and confidence (Section 9b). Team decision: the Preliminary Results reports statistics about the simulator (verification and validation) and the statistics it produces; Financial Impacts and report writing are not planned for now. New `functions/significance.py` (E18 course maximum failure rate, E19 target test, E20 max demonstrated temperature, E21 exact two-rate test, one-sample t-test, Clopper-Pearson CI, bootstrap CI, MC error) with 15 tests; new `analysis/02_significance.py` (11 tables, 6 figures, `key_numbers_significance.md`). Key results: simulator = chi-square within 0.65%; vs published TI p = 0.42; all parts demonstrate the target at 55 °C; all-TI system demonstrated up to 95 °C; no supplier difference significant; profile effect 3.77× (2.33–6.46). 135 tests pass. |
