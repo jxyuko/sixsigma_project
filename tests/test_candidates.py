@@ -1,5 +1,5 @@
 # test_candidates.py
-# Mode 3 supplier selection (ROADMAP Section 2 Mode 3, E15-E17, A11-A12): known answers and
+# The simulator: supplier selection with select() (ROADMAP Section 2, E15-E17, A11-A14): known answers and
 # degenerate cases.
 
 import math

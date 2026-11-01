@@ -1,6 +1,6 @@
 # interface.py
 # Input parsing and output formatting for the user-facing simulator (code/02_run_simulator.py) and
-# the later web app (M9). Every number comes from candidates.select(); this file only reads inputs
+# a possible later web front end. Every number comes from candidates.select(); this file only reads inputs
 # and writes readable text and tables.
 
 import pandas as pd

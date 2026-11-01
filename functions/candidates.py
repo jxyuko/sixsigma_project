@@ -1,5 +1,5 @@
 # candidates.py
-# Mode 3: supplier selection (ROADMAP Section 2, Mode 3).
+# The simulator: supplier selection (ROADMAP Section 2). This is what users run.
 # The user (a vehicle maker) enters, for any of the six slots, as many candidate suppliers as they
 # like, each with data from that supplier's reliability report. The simulator puts every candidate
 # on the user's own operating condition, checks it against the user's reliability requirement,
@@ -142,7 +142,7 @@ def clean_candidates(candidates, library=None, prices=None):
 
 @dataclass
 class Selection:
-    """Mode 3 result."""
+    """Result of select(): candidate table, ranked combinations, warnings, settings."""
     candidates: pd.DataFrame        # one row per candidate, at the user's condition
     combinations: pd.DataFrame      # slot combinations ranked best first
     warnings: list
@@ -159,8 +159,8 @@ def p_best(lam_matrix):
     return (is_min / is_min.sum(axis=1, keepdims=True)).mean(axis=0)
 
 
-# select(): Mode 3. Every candidate is put on the user's condition by the same equations as Mode 1
-# (E2-E7, E6 for profiles), with a shared Ea draw for candidates without a stated Ea (A2, A12) and
+# select(): the simulator. Every candidate is put on the user's condition by the same equations as the
+# internal engine (E2-E7, E6 for profiles), with a shared Ea draw for candidates without a stated Ea (A2, A12) and
 # common random numbers. Requirement: R(mission_hours) >= target_r with 95% confidence (A13).
 # Warranty exposure (E12, A14) for fleet_size vehicles (default 1,000) over warranty_hours (default
 # the mission). Cost per warranty failure = repair_cost if given, else each part's unit price

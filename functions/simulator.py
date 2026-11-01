@@ -1,7 +1,9 @@
 # simulator.py
 # TASER-EV Monte Carlo simulator (ROADMAP Sections 2, 3 and 8).
-# Mode 1: evaluate(config, profile) -> component and system results with 95% CIs.
-# Mode 2: compare(config_a, config_b, profile) -> A, B, differences B - A and P(B outlasts A),
+# Internal engine on the component library, used for validation (ROADMAP Sections 8 and 11);
+# users run the supplier-selection simulator in functions/candidates.py instead.
+#   evaluate(config, profile) -> component and system results with 95% CIs
+#   compare(config_a, config_b, profile) -> A, B, differences B - A and P(B outlasts A),
 #         run on one shared set of draws (common random numbers).
 
 from dataclasses import dataclass, field
@@ -39,7 +41,7 @@ class Draws:
 
 @dataclass
 class Evaluation:
-    """Mode 1 result. Tables hold the median and 95% CI; `lam` keeps the per-draw rates."""
+    """evaluate() result. Tables hold the median and 95% CI; `lam` keeps the per-draw rates."""
     components: pd.DataFrame
     system: pd.DataFrame
     lam: dict = field(repr=False)        # slot -> failure-rate draws at the use condition
@@ -55,7 +57,7 @@ def qi(x, cl=0.95):
 
 # draw_library(): Section 8a steps 1-2, for every usable family in the library.
 # Drawing per family (A9) in a fixed order means any two configurations run with the same seed
-# get the same draws for the same part: common random numbers for Mode 2.
+# get the same draws for the same part: common random numbers for compare().
 # ea_mode: "shared" = one Ea per run for all parts (A2); "independent" = one per family (8d);
 #          "fixed" = Ea = 0.7 eV in every draw, the suppliers' own convention (used in 11b)
 def draw_library(library=None, n_draws=N_DRAWS, seed=SEED, prior="uniform", ea_mode="shared"):
@@ -100,7 +102,7 @@ def check_config(config, library):
     return {s: rows[s] for s in SLOTS if s in rows}
 
 
-# evaluate(): Mode 1 (ROADMAP Section 2), the full Monte Carlo for one configuration.
+# evaluate(): the full Monte Carlo for one configuration of library parts (internal engine).
 # config: {slot: part}, 1-6 slots;  profile: operating temperature in C, or [(T_C, fraction), ...]
 # t_w: warranty in operating hours (A7);  draws: a Draws from draw_library() (made if not given)
 def evaluate(config, profile=55, t_w=DEFAULT_WARRANTY_HOURS, draws=None, library=None, cl=0.95):
@@ -157,7 +159,7 @@ def system_draws(lam_sys, t_w):
 
 @dataclass
 class Comparison:
-    """Mode 2 result: both evaluations, the B - A differences and P(B outlasts A)."""
+    """compare() result: both evaluations, the B - A differences and P(B outlasts A)."""
     a: Evaluation
     b: Evaluation
     differences: pd.DataFrame
@@ -172,7 +174,7 @@ def p_outlasts(lam_sys_a, lam_sys_b):
     return float(np.mean(b < a) + 0.5 * np.mean(b == a))
 
 
-# compare(): Mode 2 (ROADMAP Section 2). Runs both configurations on ONE set of draws (common
+# compare(): two configurations of library parts (internal engine). Runs both configurations on ONE set of draws (common
 # random numbers, 8a), so the same part gets the same draws in A and B, and differences come only
 # from the parts that differ. The configurations may differ in parts and in which slots are filled.
 # Returns A and B (as evaluate()), differences per system metric (E11) and P(B outlasts A) (E13).

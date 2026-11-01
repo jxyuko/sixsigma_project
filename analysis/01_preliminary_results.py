@@ -8,7 +8,7 @@
 #
 # Main condition (team decision 2026-11-01): 55 C, mission 2,920 h (A7), target R >= 0.999 with 95%
 # confidence (A13), 5,000 draws, seed 5300. Warranty exposure as failures per 1,000 vehicles;
-# no costs (Financial Impacts is deferred).
+# no costs (Financial Impacts is not planned for now).
 
 import sys
 from pathlib import Path

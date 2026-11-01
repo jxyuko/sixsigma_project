@@ -1,14 +1,16 @@
 # Codebook
 
-`code/01_clean_data.py` builds two files from `data/raw/parameter_table.xlsx`, which is never
-edited:
+`code/01_clean_data.py` builds three files from `data/raw/parameter_table.xlsx`, which is never
+edited. A fourth, the input template, is hand-made from the library:
 
-| File | What it is | Used by the model? |
+| File | What it is | How it is used |
 |---|---|---|
-| `data/components.csv` | The **component library**: one row per part, with the HTOL test data the simulator runs on | **Yes** |
-| `data/reference/published_fit.csv` | Manufacturer-published FITs, the team's verification of them, and our FIT calculated at the same conditions | **No.** Stored for reference; we may decide to use it later |
+| `data/components.csv` | The **component library**: one row per part, with its HTOL test data | Builds and tests the simulator (default Ea, A12), supplies the real candidates for the Preliminary Results, and feeds validation. Not offered to users |
+| `data/prices.csv` | Sheet2 unit prices and slot averages | The simulator's purchase cost and default cost per warranty failure (A14) |
+| `data/reference/published_fit.csv` | Manufacturer-published FITs, the team's verification of them, and our FIT calculated at the same conditions | **Validation only** (ROADMAP 11b); never a model input |
+| `data/examples/candidates_example.csv` | Template for the simulator's `--candidates` file, filled with real library data | Shows users the input format |
 
-To rebuild both:
+To rebuild the first three:
 
 ```bash
 .venv/Scripts/python code/01_clean_data.py
@@ -19,7 +21,7 @@ reports (TI, Analog Devices, Renesas) and distributor price pages (Sheet2). The 
 in the raw file yet `[TODO]`, except those in `data/reference/fit_verification.csv`. No values are
 invented. Where the raw table is blank, the cell stays blank and the part is flagged.
 
-## `data/components.csv`: the model's input
+## `data/components.csv`: the component library
 
 | Column | Type | Unit | Meaning | Raw-table source |
 |---|---|---|---|---|
@@ -49,9 +51,9 @@ invented. Where the raw table is blank, the cell stays blank and the part is fla
 | Digital isolator | TI ISO7741, ADI ADuM141E (1 failure) | 2 |
 | Temperature sensor | TI TMP4719, ADI MAX31730 | 1 (MAX31730: sample size blank) |
 | Gate driver | TI UCC21750, ADI ADuM4135 | 2 |
-| Current sensor | TI TMCS1101 | 1 (no unit price) |
+| Current sensor | TI TMCS1101 | 1 (no unit price in the library; the simulator uses the Sheet2 current-sensor average) |
 
-## `data/reference/published_fit.csv`: reference only, not used by the model
+## `data/reference/published_fit.csv`: validation only, never a model input
 
 One row per part, keyed by `part` (plus `slot`, `supplier`, `family`).
 
@@ -104,9 +106,10 @@ the manufacturer used a larger or different dataset than the one we transcribed.
 6. Splits the output:
    - test data → `components.csv`;
    - published values, verification and our calculated FIT → `reference/published_fit.csv`.
+7. Writes Sheet2's price list and stated slot averages → `prices.csv`.
 
-**Dropped raw columns:** `Mission time (hours)` (its unit is unclear, and the simulator takes the
-warranty from A7 instead), plus empty helper rows and duplicate rows.
+**Dropped raw columns:** `Mission time (hours)` (its unit is unclear; the user states the mission
+hours instead, and the report uses 2,920 h from A7), plus empty helper rows and duplicate rows.
 
 ## `data/examples/candidates_example.csv`: simulator input template
 

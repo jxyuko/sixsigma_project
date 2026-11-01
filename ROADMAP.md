@@ -10,7 +10,12 @@ roadmap disagree, fix one of them in the same commit. Earlier versions are kept 
 `docs/roadmap_history/`.
 
 Status tags: `[DECIDED]`, `[DEFAULT]` (our working choice, can still change), `[TODO]` (needs a
-source or data), `[LATER]` (planned extension, not in the first build).
+source or data), `[LATER]` (possible extension, not planned now).
+
+**Current design (v3, 2026-11-01):** one user-facing simulator for supplier selection, built and
+tested on the team's component library, with the Preliminary Results analysis kept apart in
+`analysis/`. Earlier designs (v1 Modes 1–2, v2 with Mode 3 and a financial report) are in
+`docs/roadmap_history/`.
 
 Contents:
 1. [Research question](#1-research-question) |
@@ -21,8 +26,8 @@ Contents:
 6. [Assumptions](#6-assumptions) |
 7. [Equations](#7-equations) |
 8. [Simulation engine](#8-simulation-engine) |
-9. [Results for the Preliminary Results report](#9-results-for-the-preliminary-results-report) |
-10. [Financial model](#10-financial-model) |
+9. [Preliminary Results](#9-preliminary-results) |
+10. [Warranty exposure and cost](#10-warranty-exposure-and-cost) |
 11. [Evaluating the simulator](#11-evaluating-the-simulator) |
 12. [Code architecture](#12-code-architecture) |
 13. [Build order](#13-build-order) |
@@ -47,47 +52,13 @@ enters candidate parts for any of the six component **slots** (ECU MCU, BMS AFE,
 temperature sensor, gate driver, current sensor), each from that supplier's reliability report,
 plus their own operating temperature and how long the part must work. The simulator turns every
 candidate's accelerated-life test into reliability at that one condition, *with its uncertainty*,
-and compares them (the user-facing simulator, below).
-
-**Team decision (2026-10-31): the user sees only this simulator** (formerly "Mode 3"). Our
-**component library** (`parameter_table.xlsx`) is not offered to users; it is what we used to
-**build and test** the simulator (default Ea, A12; validation, Section 11). The library-based
-functions `evaluate()` and `compare()` (formerly Modes 1–2) stay in the code as the tested engine
-for validation; they are not a user option.
-
-### Internal engine 1: `evaluate()` (library parts; validation only)
-
-```
-inputs:  operating temperature T_op (or a temperature profile)  +  1–6 slots, one library part each
-              │
-              ▼
-per component:  AF, equivalent device-hours, FIT, MTTF, R(t)            each as median + 95% CI
-system:         R_sys(t) band, system FIT/MTTF, B0.1 life, B0.1-to-warranty ratio,
-                estimated life in years, and P(meets warranty) = P(WR ≥ 1)
-```
-
-### Internal engine 2: `compare()` (library parts; validation only)
-
-```
-inputs:  T_op  +  configuration A (1–6 slots)  +  configuration B (1–6 slots)
-              │      the two can differ in which parts AND which slots are used
-              ▼
-Mode 1 outputs for A and for B, side by side
-differences B − A for every metric (absolute and %), with 95% CI
-P(B outlasts A) = P(B0.1,B > B0.1,A)   ← "is B really better, given how much each was tested?"
-```
-
-### The simulator: supplier selection (`select()`, user-facing)
-
-The user is a vehicle maker choosing between suppliers. For any of the six slots they enter as many
-candidates as they like, each from that supplier's reliability report, and state their own
-requirement. The simulator puts every candidate on the same basis (the user's operating condition)
-and compares them.
+and compares them. Engine: `select()` in `functions/candidates.py`; program:
+`code/02_run_simulator.py`.
 
 ```
 inputs:  operating temperature (or profile)  +  mission hours  +  target R(mission)
          (required confidence is fixed at 95%, A13)
-         + per slot (any of the six, skipped slots are left out of the system): any number of
+         + per slot (any of the six; skipped slots are left out of the system): any number of
            candidates, each with EITHER raw HTOL data (test temperature, hours, sample size, failures)
            OR a report summary (FIT or MTTF/MTBF, the temperature and confidence it refers to,
            failures), plus Ea if the report states one
@@ -116,10 +87,16 @@ note:            only operation above 150 °C (AEC-Q100 Grade 0) gets an informa
 **Why the user's report data, not a warranty:** a supplier warranty is a commercial promise
 (period, remedy, exclusions such as use beyond datasheet ratings). It contains no test temperature,
 sample size, failures or Ea, so it cannot put suppliers on a common basis. The **warranty exposure**
-in the assignment is the vehicle maker's own: expected failures and cost over *their* warranty
-(E12), computed from each candidate's reliability.
+the simulator reports is the vehicle maker's own: expected failures and cost over *their* warranty
+(E12, Section 10), computed from each candidate's reliability.
 
-**Input scope.** See Section 5. `[LATER]`: quantity per slot (A10) and the web app (M9).
+**The component library is not a user option** (team decision 2026-10-31). The team's
+`parameter_table.xlsx` (Section 4) is what we used to **build and test** the simulator: it sets the
+default Ea (A12), supplies real candidates for the Preliminary Results (Section 9), and is the data
+for validation (Section 11). The library-based functions `evaluate()` and `compare()` in
+`functions/simulator.py` are kept as the tested internal engine behind the validation.
+
+**`[LATER]`:** quantity per slot (A10) and a web front end that calls the same `select()`.
 
 ## 3. Model / approach
 
@@ -166,46 +143,37 @@ through the same layers, so the outputs are on a common basis.
   more Ea uncertainty widens the intervals, which is physically right: a longer extrapolation
   deserves less confidence.
 
-**Layer 3 – Mission: what time period matters (A7).** Warranties are stated in years and miles,
-but failure rates are per operating hour. The simulator converts the warranty to powered-on hours
-under stated assumptions. This sets t_w for the warranty ratio and warranty cost.
+**Layer 3 – Mission: what time period matters.** Failure rates are per operating hour, so the
+user states the mission in operating hours: how long the part must work at their condition. The
+report's case study uses 2,920 h, the team's whole-system warranty converted to powered-on hours
+(8 years × 1 h/day, A7).
 
-**Layer 4 – System: series block diagram, by nested Monte Carlo (E7–E10, Section 8).**
+**Layer 4 – System: series block diagram, by Monte Carlo (E7–E9, Section 8).**
 - Each selected component is a single point of failure in the battery/inverter chain: if the
-  AFE, isolator, sensor, gate driver or MCU fails, the function is lost. So the configuration is
-  a **series system**. With independent failures and constant rates (exponential life, A1), the
-  system rate is the sum of the selected parts' rates, and R_sys(t) = e^(−λ_sys·t). This works
-  for any 1 to 6 filled slots.
-- The engine repeats this about 5,000 times:
-  1. Draw an Ea.
-  2. Draw every selected part's failure rate from Layer 1.
-  3. Apply the AFs from Layer 2.
-  4. Sum into the system rate.
-  5. Compute R_sys(t), system FIT/MTTF, the B0.1 life (the time by which 0.1% of systems fail)
-     and the warranty ratio WR = B0.1 / t_w.
-- Each output is reported as a **median with a 95% interval**. The simulator also reports the
-  decision metric **P(WR ≥ 1)**: the probability that fewer than 0.1% of systems fail within
-  warranty at the user's conditions.
-- A separate failure-time simulation draws a lifetime for every component of 100,000 simulated
-  vehicles and takes the minimum. Its 0.1% quantile must match the closed-form B0.1.
+  AFE, isolator, sensor, gate driver or MCU fails, the function is lost. So a combination of
+  candidates is a **series system**. With independent failures and constant rates (exponential
+  life, A1), the system rate is the sum of the selected parts' rates, and R_sys(t) = e^(−λ_sys·t).
+  Slots the user leaves empty are left out.
+- The engine repeats this 5,000 times: draw an Ea, draw every candidate's failure rate from
+  Layer 1, apply the AFs from Layer 2, sum into the system rate, and compute R(mission), FIT,
+  MTTF and the B0.1 life (the time by which 0.1% of systems fail).
+- Each output is a **median with a 95% interval**.
 
-**Layer 5 – Comparison (Mode 2, E11–E13).**
-- Configurations A and B are evaluated on the **same random draws**: the same Ea, and the same λ
-  for any part they share. Their difference reflects only what's actually different between
-  them.
-- The simulator reports every metric for both, the difference B − A with a 95% interval, and
-  **P(B outlasts A)**.
-- This is the honest answer to "is B better?":
-  - For two zero-failure parts at the same test temperature it reduces to
-    P = D_A / (D_A + D_B).
-  - TI's BQ79656 (~101,758 units tested) against Renesas's ISL78714 (3,856 units) gives
-    P = 0.96: strong evidence that the TI part is more reliable.
-  - Two parts with similar test sizes give P ≈ 0.5: the data can't tell them apart, and the
-    simulator says so instead of crowning a false winner.
+**Layer 5 – Requirement and comparison (E16–E17).**
+- **Requirement:** the part or system "meets the target" if its 95% lower confidence bound on
+  R(mission) is at least the user's target (A13); P(R ≥ target) is reported too. The same test in
+  the course's chi-square form (E18–E19) gives the maximum demonstrated temperature (E20).
+- **Comparison:** all candidates share the same random draws (the same Ea, common random numbers),
+  so differences reflect only what differs between them. **P(best)** is the share of draws in
+  which a candidate (or combination) has the lowest failure rate. For zero-failure candidates at
+  one test temperature it reduces to D_i / Σ D_j: it measures **how much evidence** each supplier
+  has, so two parts with similar test sizes give P ≈ 0.5 and the simulator does not crown a false
+  winner.
+- **Warranty exposure and cost:** expected failures and cost per 1,000 vehicles, and total cost
+  with the purchase price (Section 10).
 
-**Evaluation: comparing the simulator to real results (Section 11).** A simulator is only useful
-if its numbers resemble reality. Beyond unit tests, we compare it against four kinds of outside
-evidence:
+**Evaluation (Section 11).** A simulator is only useful if its numbers can be trusted. Beyond the
+verification tests (11a), we compare it with:
 1. **Supplier results:** the FIT, MTBF and AF published in our parameter table, at each
    supplier's stated temperature and confidence level. These values are **never model inputs**;
    they are only used to check the simulator's output (11b).
@@ -213,21 +181,17 @@ evidence:
    ourselves, used to check that the simulator's 95% intervals contain the truth about 95% of the
    time (11e).
 
-Handbook (SN 29500, IEC 61709, MIL-HDBK-217F) and field-data comparisons were considered and
-dropped by the team (2026-10-31): the team will not supply that data, and the parameter table's
-published values already give a real-result check.
-
-For each comparison we state the **expected direction of disagreement in advance**. For example,
-the simulator models only thermally activated mechanisms (A8), so it should predict *fewer*
-failures than field data. A gap in that direction supports the model; a gap the other way points
-to a bug or a data error.
+Handbook and field-data comparisons were considered and dropped by the team (2026-10-31). Because
+only thermally activated mechanisms are modelled (A8), the simulator is expected to predict
+*fewer* failures than the field; this is stated as a limitation.
 
 **How this answers the research question.**
 - Layers 1–2 put accelerated-life data from different suppliers onto a **common basis**: the same
   temperature or profile, the same statistical treatment, the same equations.
-- Layers 3–4 turn that into the life, reliability and warranty metrics an engineer decides with.
-- Layer 5 makes comparisons **meaningful** by saying how confident we can be that one choice beats
-  another.
+- Layers 3–4 turn that into the life and reliability an engineer decides with, for one part or a
+  whole system.
+- Layer 5 checks the user's requirement and makes comparisons **meaningful** by saying how
+  confident we can be that one choice beats another.
 - The evaluation shows how far the numbers can be trusted against the real world.
 
 ## 4. Component library
@@ -256,7 +220,7 @@ Key library columns (full list in `data/codebook.md`):
 | sample_size | n | devices | Units on test (may be pooled units; A6) |
 | failures | f | count | Failures observed |
 | ea_ev | Ea | eV | Activation energy the supplier assumed |
-| unit_price_usd, price_part | | USD | Price-sheet price and which part number it came from |
+| unit_price_usd, price_part | | USD | Price-sheet price and which part number it came from (the simulator prices candidates from `data/prices.csv`, A14) |
 | source | | | Bibliography number; report URL `[TODO]` |
 | usable | | bool | All of T_test, t, n, f, Ea present |
 | flag | | | Data-quality notes (Section 14) |
@@ -264,8 +228,8 @@ Key library columns (full list in `data/codebook.md`):
 **The model reads only test data.** Manufacturer-published FITs, MTBFs and their reference
 conditions, the team's verification of them, and our FIT calculated at the same conditions are
 stored separately in `data/reference/published_fit.csv` and `data/reference/fit_verification.csv`.
-They're kept in the repo but **not used by the model** (team decision 2026-10-30; may be revisited).
-Other reference data for validation also lives in `data/reference/` (Section 11).
+They are **never model inputs** (team decision 2026-10-30); they are used only to validate the
+simulator (11b, team decision 2026-10-31).
 
 **Out of scope:** mechanical parts, ICE vehicles, software failures, and failure mechanisms that
 aren't thermally activated.
@@ -313,14 +277,14 @@ Each assumption has an ID so code comments and the report can cite it.
 | A4 | **Series system with independent failures.** | Every selected component is a single point of failure. Independence is standard without common-cause data. It's slightly optimistic if one thermal event hits several parts. | `[DECIDED]` |
 | A5 | **Failure-rate uncertainty: λ ~ Gamma(f + 1, D).** This is the posterior under a uniform prior, and its 60th percentile equals the supplier chi-square bound. | It reproduces the industry convention exactly and adds a full distribution, which is what makes CIs and P(B outlasts A) possible. A Jeffreys prior, Gamma(f + ½, D), is run as a sensitivity. | `[DEFAULT]` |
 | A6 | **Sample size × test hours = device-hours at T_test**, using the supplier's pooled sample size where one is given. | It's the only number published. TI's FIT reproduces exactly under this reading. | `[DEFAULT]` |
-| A7 | **Warranty period in operating hours: one value for the whole system.** 8 years × 365 days × 1 powered-on hour per day = **2,920 h** (`DEFAULT_WARRANTY_HOURS` in `functions/simulator.py`). Every slot is treated as powered for the same hours, including the BMS parts that may also run while charging. | Failure rates are per operating hour, but warranties are stated in years and miles. One system value keeps WR simple and comparable across configurations. Parts powered longer (e.g. the BMS during charging) make this optimistic; the low/base/high sensitivity (8d) shows how much it matters. | `[DECIDED]` (team, 2026-10-31) `[TODO: cite a source for 1 h/day]` |
-| A8 | **Only thermally activated failure mechanisms** are modelled. | HTOL only accelerates these. Cycling, vibration and humidity would add failures, so our life is an upper bound on field life, and we expect to under-predict field failure rates (11d). | `[DECIDED]` |
+| A7 | **Warranty period in operating hours: one value for the whole system.** 8 years × 365 days × 1 powered-on hour per day = **2,920 h** (`DEFAULT_WARRANTY_HOURS` in `functions/simulator.py`). Every slot is treated as powered for the same hours, including the BMS parts that may also run while charging. | Failure rates are per operating hour, but warranties are stated in years and miles. One system value keeps the comparison simple. It is the mission used in the report's case study (Section 9) and the default warranty period of the internal engine. Parts powered longer (e.g. the BMS during charging) make this optimistic; the sensitivity (½ / ×2, Section 9) shows how much it matters. | `[DECIDED]` (team, 2026-10-31) `[TODO: cite a source for 1 h/day]` |
+| A8 | **Only thermally activated failure mechanisms** are modelled. | HTOL only accelerates these. Cycling, vibration and humidity would add failures, so our life is an upper bound on field life, and we expect to under-predict field failure rates (stated as a limitation). | `[DECIDED]` |
 | A9 | **Parts in one qualification family share data**: the 4 TI C2000 parts, and the 5 RH850 parts. | That's how the suppliers report it. | `[DECIDED]` |
 | A10 | **One part per slot** (quantity 1) for now. | It keeps comparisons clean. Quantities scale λ_sys linearly (E8), so adding them later is easy. | `[DEFAULT]` |
-| A11 | **Mode 3 report summaries:** a supplier's FIT or MTTF is the chi-square bound (E4) at its stated temperature and confidence level, from its stated failures. Defaults when the report doesn't say: confidence 60%, failures 0, temperature = test temperature. | This is how suppliers compute published FIT (11b reproduces TI's values this way), so the summary can be turned back into test evidence (E15) and gets the same uncertainty treatment as raw data. | `[DEFAULT]` |
-| A13 | **Mode 3 required confidence is fixed at 95%.** A candidate meets the target only if the 95% lower confidence bound on R(mission) is at least the target (E17). | Team decision (2026-10-31): one standard for every comparison, matching the 95% intervals used everywhere else. | `[DECIDED]` |
+| A11 | **Report summaries as input:** a supplier's FIT or MTTF is the chi-square bound (E4) at its stated temperature and confidence level, from its stated failures. Defaults when the report doesn't say: confidence 60%, failures 0, temperature = test temperature. | This is how suppliers compute published FIT (11b reproduces TI's values this way), so the summary can be turned back into test evidence (E15) and gets the same uncertainty treatment as raw data. | `[DEFAULT]` |
+| A12 | **Activation energy for user candidates:** a value stated in the report is used as given (fixed). Otherwise Ea is drawn as in A2, centred on the library ("training data") median Ea, which is 0.7 eV because every library report assumes 0.7. | Uses the supplier's own physics when known, and the evidence in our dataset when not. | `[DEFAULT]` |
+| A13 | **Required confidence is fixed at 95%.** A candidate meets the target only if the 95% lower confidence bound on R(mission) is at least the target (E17). | Team decision (2026-10-31): one standard for every comparison, matching the 95% intervals used everywhere else. | `[DECIDED]` |
 | A14 | **Cost basis for warranty exposure:** exposure is reported per 1,000 vehicles unless the user gives a fleet size. A candidate's unit price is the user's, else the Sheet2 price of a matching part number, else the Sheet2 average for its slot. Cost per warranty failure is the user's repair cost, else the part's unit price. Total cost = purchase (vehicles × unit price) + expected warranty cost. | The user may not know fleet size or repair cost. Per-1,000 figures are readable without them, and Sheet2 prices are sourced (distributor links). Parts-only cost is a **lower bound**: real repairs add labour and often a whole module, so it understates warranty cost. | `[DECIDED]` (team, 2026-10-31) |
-| A12 | **Mode 3 activation energy:** a value stated in the report is used as given (fixed). Otherwise Ea is drawn as in A2, centred on the library ("training data") median Ea, which is 0.7 eV because every library report assumes 0.7. | Uses the supplier's own physics when known, and the evidence in our dataset when not. | `[DEFAULT]` |
 
 ## 7. Equations
 
@@ -369,9 +333,9 @@ Also: FIT_sys = λ_sys · 10⁹ and MTTF_sys = 1/λ_sys.
 
 **E9 · B0.1 life.**  B0.1 = −ln(1 − 0.001) / λ_sys = 0.0010005 / λ_sys
 
-**E10 · Warranty ratio.**  WR = B0.1 / t_w
+**E10 · Warranty ratio** (internal engine `evaluate()`; used in validation).  WR = B0.1 / t_w
 
-**E11 · Differences (Mode 2).** For every metric M: ΔM = M_B − M_A and ΔM% = 100·(M_B − M_A)/M_A,
+**E11 · Paired differences.** For every metric M: ΔM = M_B − M_A and ΔM% = 100·(M_B − M_A)/M_A,
 computed draw by draw, then summarized as a median and 95% CI.
 
 **E12 · Expected warranty failures and cost** for a fleet of N vehicles:
@@ -384,9 +348,9 @@ itself) count as half, so self-comparison gives exactly 0.5. Closed-form check: 
 and 2 at the same T_test (so they share an AF), the probability that part 1 has the lower failure
 rate is P(λ_1 < λ_2) = D_1 / (D_1 + D_2).
 
-**E14 · Probability of meeting warranty.**  P(WR ≥ 1) = share of draws with B0.1 ≥ t_w.
+**E14 · Probability of meeting warranty** (internal engine).  P(WR ≥ 1) = share of draws with B0.1 ≥ t_w.
 
-**E15 · Test evidence from a report summary (Mode 3, A11).** A published FIT (or 1/MTTF) λ_pub at
+**E15 · Test evidence from a report summary (A11).** A published FIT (or 1/MTTF) λ_pub at
 reference temperature T_ref, confidence CL and f failures implies
 
   n · t = χ²(CL; 2f + 2) / (2 · λ_pub · AF(T_ref))
@@ -398,12 +362,12 @@ test gives n·t = 1.9×10⁶ device-hours, TI C2000's raw data.
 lowest rate (ties split evenly). Closed form for zero-failure candidates at one test temperature:
 P(i best) = D_i / Σ_j D_j (generalizes E13).
 
-**E17 · Reliability requirement (Mode 3).** For mission time t_m and target R*:
+**E17 · Reliability requirement.** For mission time t_m and target R*:
 P(R(t_m) ≥ R*) = share of draws meeting it; lower confidence bound R_L = the (1 − confidence)
 quantile of R(t_m) over draws, with confidence fixed at 95% (A13); "meets the target" ⇔ R_L ≥ R*.
 Known answer at T_op = T_test with f = 0: R_L = exp(−t_m · (−ln 0.05) / D).
 
-**Evidence needed to pass (Mode 3 reading aid).** With f = 0, a candidate meets R* over t_m with 95%
+**Evidence needed to pass (reading aid).** With f = 0, a candidate meets R* over t_m with 95%
 confidence only if its test evidence is at least n · t ≥ −ln(0.05) / (λ* · AF(T_op)), where
 λ* = −ln(R*) / t_m. Example, 1,000 h at 200 °C with R* = 0.999: λ* = 1.0×10⁻⁶ /h and AF(200 °C from a
 125 °C test) = 0.039, so n · t ≥ 7.6×10⁷ device-hours. TI C2000 has 1.9×10⁶ (40× short); UCC21750 has
@@ -429,38 +393,33 @@ failure times**, because most tests had 0 failures. So the engine is a **paramet
 built on the evidence distributions (E4), following the same `qi()` idea: repeat, collect, take
 quantiles.
 
-**8a. Outer loop (parameter uncertainty), R = 5,000 draws:**
-1. Draw Ea (A2).
-2. Draw each library part's λ at T_test from Gamma(f + 1, n·t).
-3. Convert each to the use condition: λ_use = λ_test / AF_eff (E6).
+**8a. Draws (parameter uncertainty), R = 5,000:**
+1. Draw Ea (A2): one shared draw per run for candidates without a stated Ea (A12); a stated Ea is
+   used as given. Sensitivity options: `ea_mode = "independent"` or `"fixed"`.
+2. Draw each candidate's λ at its test temperature from Gamma(f + 1, n·t) (A5).
+3. Convert to the use condition: λ_use = λ_test / AF_eff (E6).
 
-A and B share the same draws (common random numbers).
+All candidates in one run share the same Ea draws, so comparisons use common random numbers.
 
-**8b. Per-draw outputs:** compute E5–E14 for each draw. Report the median, the 95% CI
-(2.5–97.5 percentiles) and the probabilities E13–E14.
+**8b. Per-draw outputs:** E5, E7–E9, E12, E16–E17 for every candidate and every combination;
+reported as the median and the 95% CI (2.5–97.5 percentiles), plus the probabilities.
 
-**8c. Inner check (aleatory variation):** for one set of λs, simulate 100,000 systems with
-T_j ~ Exp(λ_j) and T_sys = min_j T_j. The empirical 0.1% quantile must match E9 within Monte Carlo
-error.
+**8c. Check (aleatory variation):** for one set of λs, simulate 4×10⁶ systems with T_j ~ Exp(λ_j)
+and T_sys = min_j T_j. The empirical 0.1% quantile must match E9 within Monte Carlo error.
 
-**8d. Sensitivity:**
-- T_op from 25 to 125 °C.
-- Ea range, and shared vs independent Ea draws (A2).
-- Uniform vs Jeffreys prior (A5).
-- t_w at low / base / high.
+**8d. Sensitivity** (Section 9): temperature ±10 °C, mission ½ / ×2, Ea fixed / independent,
+Jeffreys prior, Monte Carlo seed.
 
-Shown as tornado charts and line plots.
+**Reproducibility:** fixed random seed (default 5300), recorded with every result.
 
-**Reproducibility:** fixed random seed (default 5300), recorded in every results file.
+**Internal engine:** `draw_library()` draws Ea and one λ_test array per qualification family (A9)
+for the whole library in a fixed order, so `evaluate()` / `compare()` give identical draws for the
+same part. It is used by the validation (11b) and the coverage study (11e).
 
-**Common random numbers in code:** `draw_library()` draws Ea and one λ_test array per qualification
-family (A9) for the whole library, in a fixed order. Any configuration run on the same `Draws`
-therefore uses identical draws for the same part, which is what Mode 2 needs.
+**Years in outputs:** `mttf_years_continuous` and `b01_years_continuous` (internal engine) are
+hours ÷ 8,760, i.e. years of 24/7 operation, not calendar years.
 
-**Years in outputs:** `mttf_years_continuous` and `b01_years_continuous` are hours ÷ 8,760, i.e.
-years of 24/7 operation, not calendar years. Calendar life depends on the duty assumption (A7).
-
-## 9. Results for the Preliminary Results report
+## 9. Preliminary Results
 
 **Kept apart from the simulator code** (team decision 2026-11-01): `analysis/01_preliminary_results.py`
 only *calls* the simulator and writes to `reports/preliminary_results/` (`tables/`, `figures/`,
@@ -469,7 +428,9 @@ vehicle maker's candidates (one part per qualification family, A9).
 
 **Main condition** (team decision 2026-11-01): 55 °C (the parameter table's reference temperature),
 mission 2,920 h (A7), target R ≥ 0.999 with 95% confidence (A13), 5,000 draws, seed 5300. Warranty
-exposure as failures per 1,000 vehicles; no costs here (Section 10 is deferred).
+exposure as failures per 1,000 vehicles; no costs. Figures are drawn with plotnine in
+`analysis/plots.py`. Report writing and the Financial Impacts analysis are not planned for now
+(team decision 2026-11-01); this section and 9b are the results.
 
 | # | Analysis | Statistic | Output |
 |---|---|---|---|
@@ -496,7 +457,7 @@ exposure as failures per 1,000 vehicles; no costs here (Section 10 is deferred).
   negligible (< 5%).
 - **Validation:** as in 11b and 11e.
 
-## 9b. Significance and confidence (Preliminary Results)
+### 9b. Significance and confidence
 
 `analysis/02_significance.py` (kept apart from the simulator; statistics in `functions/significance.py`,
 tests in `tests/test_significance.py`) writes `sig_*` tables and figures and
@@ -527,36 +488,24 @@ chi-square bounds (k-factors), one-sample t-test, proportion CIs and the percent
 are valid (1c), so the demonstrated-reliability conclusions (2a, 2b) can be trusted; supplier rankings
 (2c) are not statistically significant, and the temperature profile effect (2d) is.
 
-## 10. Financial model
+## 10. Warranty exposure and cost
 
-**Deferred** (team decision 2026-11-01): the Financial Impacts report comes after the Preliminary
-Results. The simulator already computes warranty exposure and cost (A14); the report analysis will
-be added as `analysis/02_financial_impacts.py` → `reports/financial_impacts/`.
+Built into the simulator (A14, E12). A Financial Impacts report is **not planned for now** (team
+decision 2026-11-01).
+
+- **Per candidate and per combination:** warranty failures N · F(t_w), warranty cost
+  N · F(t_w) · C_fail and total cost = N · unit price + warranty cost, per draw, so 95% CIs come
+  straight from the simulation.
+- **Defaults:** N = 1,000 vehicles; t_w = the mission hours; C_fail = the part's unit price, a
+  parts-only **lower bound** (labour and module replacement are not included).
+- **Prices:** Sheet2 of `parameter_table.xlsx` (distributor prices with links), cleaned into
+  `data/prices.csv`: the candidate's own price if entered, else the Sheet2 price of a matching part
+  number, else the Sheet2 average for its slot.
+- **Before vs after:** any two combinations; the simulator reports each one's total cost vs the
+  most reliable combination (paired draws) and names the lowest-cost combination.
 
 **Suggestion kept for later:** a cited cost of one warranty repair (part + labour, e.g. ECU/BMS
-module replacement). Until then the cost per failure is the part's unit price, a parts-only lower
-bound, and costs are reported per 1,000 vehicles only.
-
-Unit prices come from Sheet2 of `parameter_table.xlsx` (distributor prices with links), cleaned
-into `data/prices.csv` (A14).
-
-**10a. Warranty exposure, before vs after** (built into the simulator, A14):
-- For every candidate and combination: warranty failures N · F(t_w), warranty cost
-  N · F(t_w) · C_fail (E12) and total cost = N · unit price + warranty cost, per draw, so 95% CIs
-  come straight from the simulation. N defaults to 1,000 vehicles; C_fail defaults to the unit
-  price (parts-only lower bound).
-- Before vs after = any two combinations; the simulator reports each one's total cost vs the most
-  reliable combination (paired draws) and names the lowest-cost combination.
-
-**10b. Engineering evaluation time** (the charter goal is a 20% reduction):
-- Hours per component evaluation × evaluations per year × $74.66/h (Federal Register, 2025).
-- After = before × 0.8.
-- The CI comes from simulating a range for hours per evaluation.
-
-Inputs to source:
-- C_fail: cost per warranty repair, including part and labour, e.g. ECU / BMS module replacement.
-- N: annual EV production volume.
-- Hours per evaluation.
+module replacement) to replace the parts-only default.
 
 ## 11. Evaluating the simulator
 
@@ -569,7 +518,10 @@ looking at the result.
 
 ### 11a. Verification tests (`tests/`)
 
-Status: **all pass (77 tests, M5, 2026-10-31).** Run with `.venv/Scripts/python -m pytest`.
+Status: **all pass.** The table below was completed at M5 (77 tests); the suite has since grown to
+135 tests (checks for `select()`, significance statistics and the analysis are in
+`tests/test_candidates.py`, `tests/test_significance.py` and `tests/test_analysis.py`). Run with
+`.venv/Scripts/python -m pytest`.
 
 | Check | Expected | Result | Test(s) |
 |---|---|---|---|
@@ -594,8 +546,9 @@ Status: **all pass (77 tests, M5, 2026-10-31).** Run with `.venv/Scripts/python 
 | 8c | empirical 0.1% quantile ≈ E9 (within 5%: with 4×10⁶ systems the quantile rests on ~4,000 failures, so its MC error is ~1.6%) | ✅ | `test_failure_time_check_matches_b01` |
 | A5 sensitivity | Jeffreys prior gives lower FIT than uniform | ✅ | `test_jeffreys_prior_lowers_rates` |
 
-**Not covered by 11a** (these are validation, M6): whether the simulated rates match the
-published values (11b) and whether the 95% intervals cover a known true rate 95% of the time (11e).
+**Not covered by 11a** (validation): whether the simulated rates match the published values
+(11b) and whether the 95% intervals cover a known true rate 95% of the time (11e). Formal tests of
+both are in 9b.
 
 ### 11b. Real result 1: the parameter table's published FIT, MTBF and AF ✅
 
@@ -635,16 +588,12 @@ published values (11b) and whether the 95% intervals cover a known true rate 95%
     reproduced are the ones the team already found to rest on different data.
 - Outputs (generated locally by `code/03_validation.py`, not committed): `results/tables/validation_supplier_fit.csv`, `results/figures/validation_supplier_fit.png`.
 
-### 11c. Industry handbooks `[DROPPED]`
+### 11c–11d. Handbooks and field evidence `[DROPPED]`
 
-Dropped by team decision (2026-10-31): the team will not supply handbook data, and the public
-per-part figures are incomplete (TI's C2000 FMEDA rates are under NDA).
-
-### 11d. Field evidence `[DROPPED]`
-
-Dropped by team decision (2026-10-31), for the same reason. A8 (only thermal mechanisms) still
-means the simulator is expected to under-predict field failure rates; this is stated as a
-limitation instead of being measured.
+Dropped by team decision (2026-10-31): the team will not supply handbook or field data, and public
+per-part handbook figures are incomplete (TI's C2000 FMEDA rates are under NDA). A8 (only thermal
+mechanisms) means the simulator is expected to under-predict field failure rates; this is stated as
+a limitation.
 
 ### 11e. Known-truth coverage study ✅
 
@@ -696,72 +645,61 @@ better about 80% of the time).
 ## 12. Code architecture
 
 ```
-functions/
-  arrhenius.py      kelvin(), accel_factor(), effective_af(), draw_ea()        E1, E2, E6, A2
-  evidence.py       device_hours(), lambda_bound(), fit(), mttf_hours(), draw_lambda()   E3–E5, A5
+functions/                 the simulator (plain functions, all tested)
+  arrhenius.py      kelvin(), accel_factor(), effective_af(), draw_ea()               E1, E2, E6, A2
+  evidence.py       device_hours(), lambda_bound(), fit(), mttf_hours(), draw_lambda() E3–E5, A5
   reliability.py    reliability(), unreliability(), density(), hazard(), series_lambda(),
-                    b_life(), warranty_ratio(), p_meets_warranty()             E7–E10, E14
-  library.py        load_library(), get_part()                                 component library
-  simulator.py      evaluate(config, profile)               → component + system tables  (Mode 1)
-                    compare(config_a, config_b, profile)    → A, B, differences, P(B > A) (Mode 2)
-  candidates.py     select(candidates, profile, mission_hours, ...) → candidate table, ranked
-                    combinations, warnings  (Mode 3: E12, E15–E17, A11–A12)
-  validation.py     supplier_check(), coverage_study(), calibration_study()   Section 11b, 11e
-  interface.py      parse_profile(), component_table(), system_table(), difference_table()
-                    (input parsing and readable tables for the run script and the later UI)
-  finance.py        warranty_cost(), eval_time_cost()                          Section 10
+                    b_life(), warranty_ratio(), p_meets_warranty()                    E7–E10, E14
+  candidates.py     select(candidates, profile, mission_hours, ...)  THE SIMULATOR   E12, E15–E17, A11–A14
+                    price_for(), load_prices(), library_candidate()
+  interface.py      parse_profile(), read_candidates(), summary_text(), key_table(), detail tables
+  library.py        load_library(), get_part()                                        component library
+  simulator.py      internal engine for validation: draw_library(), evaluate(), compare(),
+                    p_outlasts(), reliability_band(), failure_time_check()           E8–E14, 8a, 8c
+  validation.py     supplier_check(), coverage_study(), calibration_study()          11b, 11e
+  significance.py   max_failure_rate(), target_test(), max_demonstrated_temp(), two_rate_test(),
+                    one_sample_t(), proportion_ci(), bootstrap_ci(), mc_standard_error()   E18–E21, 9b
 code/
-  01_clean_data.py    raw xlsx → data/components.csv + data/codebook.md
-  02_run_simulator.py the simulator for a user: asks for the operating temperature (or profile),
-                      mission hours and candidates (or --temp --hours --candidates file.csv),
-                      prints SUMMARY → key table → details, saves CSVs to results/tables/runs/
-                      (git-ignored)
-  03_validation.py    Section 11b and 11e → validation tables and figures
-analysis/                report material, kept apart from the simulator (only calls functions/)
-  01_preliminary_results.py   Section 9 → reports/preliminary_results/ (tables, figures, key_numbers.md)
-  02_significance.py          Section 9b → reports/preliminary_results/ (sig_* tables and figures,
-                              key_numbers_significance.md); statistics in functions/significance.py
-  plots.py                    every report figure, drawn with plotnine (ggplot grammar in Python)
-  (Financial Impacts: not planned for now, Section 10)
-reports/
-  preliminary_results/, financial_impacts/   report tables, figures and the .docx deliverables
-data/reference/
-  published_fit.csv, fit_verification.csv   (published values: validation only, never model input)
-data/examples/
-  candidates_example.csv   simulator input template, filled with real library data
-data/prices.csv            Sheet2 unit prices and slot averages (A14), built by 01_clean_data.py
+  01_clean_data.py       raw xlsx → data/components.csv, data/prices.csv, data/reference/published_fit.csv
+  02_run_simulator.py    the program users run: asks for temperature, mission hours and candidates
+                         (or --temp --hours --candidates file.csv); prints SUMMARY → key table →
+                         details; saves CSVs to results/tables/runs/ (git-ignored)
+  03_validation.py       11b and 11e outputs to results/ (git-ignored; regenerate any time)
+analysis/                  report analyses, kept apart from the simulator (they only call functions/)
+  01_preliminary_results.py   Section 9 → reports/preliminary_results/
+  02_significance.py          Section 9b → reports/preliminary_results/ (sig_*)
+  plots.py                    every report figure, drawn with plotnine
+reports/preliminary_results/  tables/, figures/, key_numbers.md, key_numbers_significance.md
+data/
+  components.csv, prices.csv, codebook.md, examples/candidates_example.csv, reference/, raw/
 tests/
-  test_library.py, test_equations.py (E1–E6, draws), test_reliability.py (E7–E10, E14),
-  test_simulator.py, test_validation.py (11b, 11e), test_interface.py (run script),
-  test_candidates.py (Mode 3)
+  test_library, test_equations (E1–E6, draws), test_reliability (E7–E10, E14), test_simulator
+  (internal engine), test_candidates (the simulator), test_interface, test_validation (11b, 11e),
+  test_significance (E18–E21), test_analysis
 ```
 
-- A configuration is a plain mapping from slot to part, e.g.
-  `{"ECU MCU": "F280049", "Gate driver": "UCC21750-Q1"}`.
-- A profile is a list of (temperature °C, fraction), e.g. `[(55, 1.0)]`.
-- `evaluate()` and `compare()` return DataFrames and do no plotting. The later UI calls exactly
-  these two functions.
+- A candidate is a plain dict (or a row of a candidates CSV): slot, name, test temperature, and
+  either test hours + sample size + failures or a FIT / MTTF (see `data/codebook.md`).
+- A profile is one temperature or a list of (temperature °C, fraction), e.g. `[(40, 0.5), (70, 0.5)]`.
+- `select()` returns tables and does no plotting or printing; a later web front end would call it
+  directly.
 
 ## 13. Build order
 
-Each milestone ends with its tests passing and this file updated.
+Each milestone ended with its tests passing and this file updated.
 
-| # | Milestone | Done when |
+| # | Milestone | Status |
 |---|---|---|
-| M0 | Roadmap agreed (this file) | The team has reviewed the simulator design and model |
-| M1 ✅ | Component library | `data/components.csv` (19 parts, 17 usable), `data/codebook.md`, `functions/library.py`; 16 tests in `tests/test_library.py` pass |
-| M2 ✅ | Equation functions (E1–E10, E14) and Monte Carlo draws (A2, A5) | 11a tests for these pass (50 tests in total) |
-| M3 ✅ | Simulator Mode 1 `evaluate()` | Component + system outputs with CIs for any 1–6 slot configuration and any profile; 18 tests in `tests/test_simulator.py` (68 in total) |
-| M4 ✅ | Simulator Mode 2 `compare()` | A, B, differences and P(B outlasts A); self-comparison checks pass; 23 tests in `tests/test_simulator.py` (73 in total) |
-| M5 ✅ | Verification | All 11a tests pass (77 tests) |
-| M6 ✅ | Real-result validation, and a runnable simulator | 11b (published FIT/MTBF/AF) and 11e (coverage, calibration) done, 11c–11d dropped; `code/02_run_simulator.py` asks for the operating temperature and prints all outputs; 94 tests pass |
-| M6b ✅ | Mode 3: supplier selection | `select()` for any number of user candidates per slot (raw HTOL data or report FIT/MTTF), requirement check, P(best), ranked combinations and warranty exposure; in the run script; 19 tests in `tests/test_candidates.py` (113 in total) |
-| M6c ✅ | One user-facing simulator | `code/02_run_simulator.py` runs supplier selection only (no library picking), required vs optional inputs, summary first, warranty exposure per 1,000 vehicles with Sheet2 prices; 117 tests |
-| M7a ✅ | Preliminary Results analysis | Section 9 tables and figures in `reports/preliminary_results/` from `analysis/01_preliminary_results.py`; 120 tests |
-| M7c ✅ | Significance and confidence | Section 9b: simulator verification and validation statistics, chi-square target tests, max demonstrated temperature, supplier tests, profile effect; 6 figures; 135 tests |
-| M7b | Financial Impacts analysis `[LATER]` | Section 10 before/after cost with CIs in `reports/financial_impacts/` |
-| M8 | Reports | Preliminary Results and Financial Impacts .docx in `reports/` |
-| M9 | User interface `[LATER]` | Front end over `evaluate()` / `compare()` |
+| M1 | Component library from `parameter_table.xlsx` | ✅ 19 parts, 17 usable |
+| M2 | Equation functions (E1–E10, E14) and Monte Carlo draws | ✅ |
+| M3–M4 | Internal engine `evaluate()` / `compare()` with common random numbers | ✅ (now validation only) |
+| M5 | Verification (11a) | ✅ |
+| M6 | Validation against published FIT/MTBF/AF (11b) and known truth (11e) | ✅ (11c–11d dropped) |
+| M6b–c | The user-facing simulator: `select()`, `code/02_run_simulator.py`, Sheet2 costs | ✅ |
+| M7a | Preliminary Results analysis (Section 9) | ✅ |
+| M7c | Significance and confidence (Section 9b), plotnine figures | ✅ |
+| — | Report writing (.docx), Financial Impacts analysis | not planned for now (team decision 2026-11-01) |
+| — | Web front end over `select()`; quantity per slot | `[LATER]` |
 
 ## 14. Data issues
 
@@ -782,7 +720,8 @@ Each milestone ends with its tests passing and this file updated.
 - "ASUM4135" corrected to ADuM4135.
 - "Rensas" corrected to Renesas Electronics.
 - Some prices are for orderable variants or family proxies; each is flagged in `flag`.
-- The current sensor has no price.
+- Sheet2 lists no individual current-sensor prices, only a stated average (17.35 USD over 6
+  products); the simulator uses that average (A14).
 
 **Published vs calculated FIT.** The team checked the supplier reports (2026-10-30). The raw table
 **mixes FITs reported directly by manufacturers with FITs that can be calculated from the
@@ -828,3 +767,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-11-01 | M7a done. Team decisions: report analyses live apart from the simulator (`analysis/` → `reports/`); main condition 55 °C, 2,920 h, target 0.999; Financial Impacts deferred; a cited repair cost kept as a suggestion; costs per 1,000 vehicles only. New `analysis/01_preliminary_results.py`: Tables 1–4, Figures 1–3, temperature sweep, profile vs mean, sensitivity, `key_numbers.md` (results in Section 9). `select()` gains `ea_mode` (shared / independent / fixed) for the sensitivity. New `tests/test_analysis.py` (paired ratio: identical evidence → 1, known answer D_ti/D_alt). 120 tests pass. |
 | 2026-11-01 | M7c: significance and confidence (Section 9b). Team decision: the Preliminary Results reports statistics about the simulator (verification and validation) and the statistics it produces; Financial Impacts and report writing are not planned for now. New `functions/significance.py` (E18 course maximum failure rate, E19 target test, E20 max demonstrated temperature, E21 exact two-rate test, one-sample t-test, Clopper-Pearson CI, bootstrap CI, MC error) with 15 tests; new `analysis/02_significance.py` (11 tables, 6 figures, `key_numbers_significance.md`). Key results: simulator = chi-square within 0.65%; vs published TI p = 0.42; all parts demonstrate the target at 55 °C; all-TI system demonstrated up to 95 °C; no supplier difference significant; profile effect 3.77× (2.33–6.46). 135 tests pass. |
 | 2026-11-01 | Report figures redrawn with plotnine (ggplot grammar, as in the course's Python track) so the team can run and adapt them in Posit Cloud: new `analysis/plots.py` holds all 10 figures; both analysis scripts call it. Figure 2 split into 2a (failures vs temperature) and 2b (P(meets target) vs temperature), one axis each. `plotnine` added to requirements.txt. Numbers unchanged; 135 tests pass. |
+| 2026-11-01 | v3 roadmap: rewritten to match the current design (v2 saved in `docs/roadmap_history/ROADMAP_v2_2026-11-01.md`). Sections 2, 3, 8, 10, 12, 13 rewritten: one user-facing simulator (`select()`), the library and `evaluate()`/`compare()` as the build-and-test base, cost model (Section 10, formerly Financial model), current code layout and milestones; Section 9 renamed Preliminary Results with 9b nested; 11c–11d merged as dropped; 'Mode' wording removed from assumptions and equations (numbers unchanged). Code comments, CLAUDE.md and the codebook updated to match. No numbers changed. |

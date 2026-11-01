@@ -90,6 +90,7 @@ functions/        the simulator: equations, Monte Carlo engine, statistics (all 
 code/             01 clean data, 02 run the simulator, 03 validation
 analysis/         report analyses and plotnine figures (only call functions/)
 reports/          Preliminary Results tables, figures and key numbers
+results/          local outputs of simulator runs and validation (git-ignored)
 tests/            known-answer and degenerate-case checks for every statistic
 ROADMAP.md        the single source of truth: approach, assumptions, equations, results, changelog
 ```

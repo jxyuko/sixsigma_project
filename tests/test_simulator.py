@@ -1,5 +1,5 @@
 # test_simulator.py
-# Tests for Mode 1 evaluate(), Mode 2 compare() and the Monte Carlo engine (ROADMAP Sections 2, 8, 11a).
+# Tests for the internal engine: evaluate(), compare() and the Monte Carlo draws (ROADMAP Sections 8, 11a).
 
 import math
 
@@ -173,7 +173,7 @@ def test_failure_time_check_matches_b01():
     assert empirical == pytest.approx(closed, rel=0.05)
 
 
-# --- Mode 2: compare() (E11, E13) ------------------------------------------------------------------
+# --- compare() (E11, E13) ------------------------------------------------------------------
 
 def diff(cmp, metric, col="delta_median"):
     return cmp.differences.loc[cmp.differences["metric"] == metric, col].iloc[0]
