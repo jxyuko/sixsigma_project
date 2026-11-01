@@ -22,7 +22,8 @@ SEED = 5300      # Section 8: fixed seed, recorded with every result
 
 # A7 [ASSUMPTION, team decision 2026-10-31]: one warranty for the whole system,
 # 8 years x 365 days x 1 powered-on hour per day = 2,920 operating hours.
-# The 8 years is the common EV battery-warranty term. [TODO: cite a source for 1 h/day]
+# The 8 years is the common EV battery-warranty term. 1 h/day: U.S. drivers average 60.4 minutes of driving
+# per day (AAA Foundation for Traffic Safety, American Driving Survey: 2024, Dec. 2025).
 WARRANTY_YEARS = 8
 POWERED_HOURS_PER_DAY = 1.0
 DEFAULT_WARRANTY_HOURS = WARRANTY_YEARS * 365 * POWERED_HOURS_PER_DAY
