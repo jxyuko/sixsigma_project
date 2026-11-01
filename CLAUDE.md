@@ -17,8 +17,16 @@ temperature (or a profile) and fills 1–6 slots.
 - **Mode 1, `evaluate()`:** component and system FIT, MTTF, R(t), B0.1, warranty ratio and
   P(meets warranty), with 95% CIs.
 - **Mode 2, `compare()`:** two configurations, their differences and P(B outlasts A).
+- **Mode 3, `select()`:** the user's own candidate suppliers (any number per slot, from raw
+  HTOL data or a report's FIT/MTTF) at the user's condition, against a reliability target
+  (required confidence fixed at 95%), with P(best), ranked combinations and warranty exposure.
 
-The simulator is validated against supplier, handbook and field results (ROADMAP Section 11).
+The simulator is validated against the published FIT, MTBF and AF in the parameter table (used only
+for validation, never as inputs) and a known-truth coverage study (ROADMAP Section 11).
+
+Run it: `.venv/Scripts/python code/02_run_simulator.py` asks for the operating temperature and parts
+(or `--temp 55`, `--compare "ECU MCU=R7F7016903AFP-C"`, or Mode 3 with
+`--temp 200 --candidates data/examples/candidates_example.csv --fleet 100000 --cost 1000`).
 
 Code and results come first. A user interface comes later and must call the same functions.
 

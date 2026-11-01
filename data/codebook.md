@@ -107,3 +107,22 @@ the manufacturer used a larger or different dataset than the one we transcribed.
 
 **Dropped raw columns:** `Mission time (hours)` (its unit is unclear, and the simulator takes the
 warranty from A7 instead), plus empty helper rows and duplicate rows.
+
+## `data/examples/candidates_example.csv`: Mode 3 input template
+
+Input for supplier selection (`code/02_run_simulator.py --candidates <file>`). One row per candidate.
+The example is filled with **real** data from the parameter table (no invented values), including
+one candidate entered in report-summary form (UCC21750's published 0.2 FIT at 55 °C, 60%).
+
+| Column | Required | Unit | Meaning |
+|---|---|---|---|
+| `slot` | yes | | One of the six slots |
+| `name` | yes | | Candidate name (unique within a slot) |
+| `supplier` | no | | Supplier name |
+| `test_temp_c` | yes | °C | HTOL stress temperature |
+| `test_hours`, `sample_size`, `failures` | raw-data form | h, devices, count | Raw test data (E3, E4) |
+| `fit` or `mttf_hours` | summary form | FIT or h | The report's FIT or MTTF/MTBF (E15) |
+| `ref_temp_c` | summary form, optional | °C | Temperature the FIT/MTTF refers to (default `test_temp_c`) |
+| `conf_level` | summary form, optional | fraction | Confidence level of the FIT/MTTF (default 0.60, A11) |
+| `ea_ev` | optional | eV | Activation energy stated in the report (default: library median, A12) |
+| `source` | no | | Where the values come from (not read by the code) |

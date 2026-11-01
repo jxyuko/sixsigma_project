@@ -18,3 +18,10 @@ desktop.ini
 # Editors
 .vscode/
 .idea/
+
+# Ad-hoc simulator runs (code/02_run_simulator.py)
+results/tables/runs/
+
+# Validation outputs from our original data (regenerate with code/03_validation.py)
+results/tables/validation_*.csv
+results/figures/validation_*.png

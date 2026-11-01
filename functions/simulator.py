@@ -56,7 +56,8 @@ def qi(x, cl=0.95):
 # draw_library(): Section 8a steps 1-2, for every usable family in the library.
 # Drawing per family (A9) in a fixed order means any two configurations run with the same seed
 # get the same draws for the same part: common random numbers for Mode 2.
-# ea_mode: "shared" = one Ea per run for all parts (A2); "independent" = one per family (8d)
+# ea_mode: "shared" = one Ea per run for all parts (A2); "independent" = one per family (8d);
+#          "fixed" = Ea = 0.7 eV in every draw, the suppliers' own convention (used in 11b)
 def draw_library(library=None, n_draws=N_DRAWS, seed=SEED, prior="uniform", ea_mode="shared"):
     lib = load_library(usable_only=True) if library is None else library[library["usable"]]
     rng = np.random.default_rng(seed)
@@ -71,8 +72,10 @@ def draw_library(library=None, n_draws=N_DRAWS, seed=SEED, prior="uniform", ea_m
             ea[r["family"]] = shared
         elif ea_mode == "independent":
             ea[r["family"]] = draw_ea(n_draws, rng)
+        elif ea_mode == "fixed":
+            ea[r["family"]] = np.full(n_draws, EA_MODE)
         else:
-            raise ValueError("ea_mode must be 'shared' or 'independent'")
+            raise ValueError("ea_mode must be 'shared', 'independent' or 'fixed'")
     return Draws(ea, lam, seed, n_draws, prior, ea_mode)
 
 

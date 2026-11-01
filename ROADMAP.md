@@ -73,6 +73,42 @@ differences B − A for every metric (absolute and %), with 95% CI
 P(B outlasts A) = P(B0.1,B > B0.1,A)   ← "is B really better, given how much each was tested?"
 ```
 
+### Mode 3: Supplier selection (the user's own candidates)
+
+The user is a vehicle maker choosing between suppliers. For any of the six slots they enter as many
+candidates as they like, each from that supplier's reliability report, and state their own
+requirement. The simulator puts every candidate on the same basis (the user's operating condition)
+and compares them.
+
+```
+inputs:  operating temperature (or profile)  +  mission hours  +  target R(mission)
+         (required confidence is fixed at 95%, A13)
+         + per slot (any of the six, skipped slots are left out of the system): any number of
+           candidates, each with EITHER raw HTOL data (test temperature, hours, sample size, failures)
+           OR a report summary (FIT or MTTF/MTBF, the temperature and confidence it refers to,
+           failures), plus Ea if the report states one
+         + optional warranty exposure: fleet size, cost per failure, warranty hours
+              │
+              ▼
+per candidate:   AF, FIT, MTTF, B0.1, R(mission) (median + 95% CI), lower confidence bound on
+                 R(mission), P(R ≥ target), meets target (yes/no), P(best in its slot),
+                 warranty failures and cost (median + 95% CI)
+combinations:    every pick of one candidate per entered slot, ranked by system FIT, with system
+                 R(mission), lower bound, P(meets target), P(best combination), warranty cost and
+                 extra cost vs the best combination (paired draws)
+output order:    1. reliability of every candidate at the user's condition (AF moves each one from its
+                    own test temperature, in either direction: AF > 1 below it, AF < 1 above it)
+                 2. requirement check and ranking within each slot
+                 3. ranked combinations, with the best one's system reliability stated first
+note:            only operation above 150 °C (AEC-Q100 Grade 0) gets an informational note
+```
+
+**Why the user's report data, not a warranty:** a supplier warranty is a commercial promise
+(period, remedy, exclusions such as use beyond datasheet ratings). It contains no test temperature,
+sample size, failures or Ea, so it cannot put suppliers on a common basis. The **warranty exposure**
+in the assignment is the vehicle maker's own: expected failures and cost over *their* warranty
+(E12), computed from each candidate's reliability.
+
 **Input scope.**
 - **Required:** operating temperature `[DECIDED]`. One temperature is a profile with a single bin,
   and an optional multi-bin profile (the dynamic AF) uses the same code path.
@@ -164,16 +200,16 @@ under stated assumptions. This sets t_w for the warranty ratio and warranty cost
 **Evaluation: comparing the simulator to real results (Section 11).** A simulator is only useful
 if its numbers resemble reality. Beyond unit tests, we compare it against four kinds of outside
 evidence:
-1. **Supplier results:** each supplier's own published FIT at their stated conditions. *On hold:*
-   published FITs are stored in `data/reference/` but not used (Section 14).
-2. **Industry prediction handbooks:** Siemens SN 29500, IEC 61709 and MIL-HDBK-217F, for the same
-   part types and temperatures.
-3. **Field evidence:** published field failure rates for automotive ICs, and real warranty
-   extensions and recalls for these component types (e.g. BMW's HV-battery temperature sensor
-   extension, cited in our charter).
-4. **A known-truth coverage study:** synthetic suppliers with a true failure rate we set
+1. **Supplier results:** the FIT, MTBF and AF published in our parameter table, at each
+   supplier's stated temperature and confidence level. These values are **never model inputs**;
+   they are only used to check the simulator's output (11b).
+2. **A known-truth coverage study:** synthetic suppliers with a true failure rate we set
    ourselves, used to check that the simulator's 95% intervals contain the truth about 95% of the
-   time.
+   time (11e).
+
+Handbook (SN 29500, IEC 61709, MIL-HDBK-217F) and field-data comparisons were considered and
+dropped by the team (2026-10-31): the team will not supply that data, and the parameter table's
+published values already give a real-result check.
 
 For each comparison we state the **expected direction of disagreement in advance**. For example,
 the simulator models only thermally activated mechanisms (A8), so it should predict *fewer*
@@ -267,6 +303,9 @@ Each assumption has an ID so code comments and the report can cite it.
 | A8 | **Only thermally activated failure mechanisms** are modelled. | HTOL only accelerates these. Cycling, vibration and humidity would add failures, so our life is an upper bound on field life, and we expect to under-predict field failure rates (11d). | `[DECIDED]` |
 | A9 | **Parts in one qualification family share data**: the 4 TI C2000 parts, and the 5 RH850 parts. | That's how the suppliers report it. | `[DECIDED]` |
 | A10 | **One part per slot** (quantity 1) for now. | It keeps comparisons clean. Quantities scale λ_sys linearly (E8), so adding them later is easy. | `[DEFAULT]` |
+| A11 | **Mode 3 report summaries:** a supplier's FIT or MTTF is the chi-square bound (E4) at its stated temperature and confidence level, from its stated failures. Defaults when the report doesn't say: confidence 60%, failures 0, temperature = test temperature. | This is how suppliers compute published FIT (11b reproduces TI's values this way), so the summary can be turned back into test evidence (E15) and gets the same uncertainty treatment as raw data. | `[DEFAULT]` |
+| A13 | **Mode 3 required confidence is fixed at 95%.** A candidate meets the target only if the 95% lower confidence bound on R(mission) is at least the target (E17). | Team decision (2026-10-31): one standard for every comparison, matching the 95% intervals used everywhere else. | `[DECIDED]` |
+| A12 | **Mode 3 activation energy:** a value stated in the report is used as given (fixed). Otherwise Ea is drawn as in A2, centred on the library ("training data") median Ea, which is 0.7 eV because every library report assumes 0.7. | Uses the supplier's own physics when known, and the evidence in our dataset when not. | `[DEFAULT]` |
 
 ## 7. Equations
 
@@ -332,6 +371,29 @@ rate is P(λ_1 < λ_2) = D_1 / (D_1 + D_2).
 
 **E14 · Probability of meeting warranty.**  P(WR ≥ 1) = share of draws with B0.1 ≥ t_w.
 
+**E15 · Test evidence from a report summary (Mode 3, A11).** A published FIT (or 1/MTTF) λ_pub at
+reference temperature T_ref, confidence CL and f failures implies
+
+  n · t = χ²(CL; 2f + 2) / (2 · λ_pub · AF(T_ref))
+
+with AF from the supplier's Ea (E2). Known answer: 6.211 FIT at 55 °C, 60%, f = 0 from a 125 °C
+test gives n·t = 1.9×10⁶ device-hours, TI C2000's raw data.
+
+**E16 · Probability of being the best of k.** P(i best) = share of draws in which candidate i has the
+lowest rate (ties split evenly). Closed form for zero-failure candidates at one test temperature:
+P(i best) = D_i / Σ_j D_j (generalizes E13).
+
+**E17 · Reliability requirement (Mode 3).** For mission time t_m and target R*:
+P(R(t_m) ≥ R*) = share of draws meeting it; lower confidence bound R_L = the (1 − confidence)
+quantile of R(t_m) over draws, with confidence fixed at 95% (A13); "meets the target" ⇔ R_L ≥ R*.
+Known answer at T_op = T_test with f = 0: R_L = exp(−t_m · (−ln 0.05) / D).
+
+**Evidence needed to pass (Mode 3 reading aid).** With f = 0, a candidate meets R* over t_m with 95%
+confidence only if its test evidence is at least n · t ≥ −ln(0.05) / (λ* · AF(T_op)), where
+λ* = −ln(R*) / t_m. Example, 1,000 h at 200 °C with R* = 0.999: λ* = 1.0×10⁻⁶ /h and AF(200 °C from a
+125 °C test) = 0.039, so n · t ≥ 7.6×10⁷ device-hours. TI C2000 has 1.9×10⁶ (40× short); UCC21750 has
+8.7×10⁷ (passes).
+
 ## 8. Simulation engine
 
 The course pattern (`ZZ_financial_analysis.py`) bootstraps raw observations. **We have no raw
@@ -383,8 +445,8 @@ All of these come from running the simulator.
 4. **Mode 2 examples:** the all-TI configuration against configurations that swap suppliers in
    one or more slots, giving differences with CIs and P(B outlasts A).
 5. **Sensitivity** (8d).
-6. **Comparison to real results** (11c–11e): simulator FIT against handbook and field values on a
-   log-scale chart, plus the coverage-study result.
+6. **Comparison to real results** (11b, 11e): simulator FIT against the parameter table's
+   published FIT on a log-scale chart, plus the coverage and calibration results.
 
 ## 10. Financial model
 
@@ -443,54 +505,59 @@ Status: **all pass (77 tests, M5, 2026-10-31).** Run with `.venv/Scripts/python 
 | 8c | empirical 0.1% quantile ≈ E9 (within 5%: with 4×10⁶ systems the quantile rests on ~4,000 failures, so its MC error is ~1.6%) | ✅ | `test_failure_time_check_matches_b01` |
 | A5 sensitivity | Jeffreys prior gives lower FIT than uniform | ✅ | `test_jeffreys_prior_lowers_rates` |
 
-**Not covered by 11a** (these are validation, M6): whether the simulated rates match reality
-(11c, 11d) and whether the 95% intervals cover a known true rate 95% of the time (11e).
+**Not covered by 11a** (these are validation, M6): whether the simulated rates match the
+published values (11b) and whether the 95% intervals cover a known true rate 95% of the time (11e).
 
-### 11b. Real result 1: supplier-published FIT `[ON HOLD]`
+### 11b. Real result 1: the parameter table's published FIT, MTBF and AF ✅
 
-- **Team decision (2026-10-30):** published FITs are **not used**, neither in the model nor in this
-  validation. They're stored in `data/reference/published_fit.csv` in case we decide otherwise.
-- **Why:** the team's report check showed that some published values (RH850, LTC6811, ISL78714)
-  rest on larger datasets than the test data in our table. So a mismatch says nothing about our
-  model.
-- **If revived:** the file already holds our FIT calculated at each supplier's reference
-  conditions, and the ratio to the published value. TI parts reproduce (C2000 6.21 vs 6.19), which
-  remains the E4 known-answer test in 11a.
+- **Team decision (2026-10-31):** the published values are used to **validate** the simulator.
+  They are still **not model inputs** (decision of 2026-10-30 stands), so the check is independent.
+- **Method** (`validation.supplier_check()`, `code/03_validation.py`): for every usable part, run
+  `evaluate()` at the part's published reference temperature (55 °C) and compare:
+  - FIT: the simulator's FIT draws with Ea fixed at the suppliers' 0.7 eV, taken at the published
+    confidence level (60%), against the published FIT; also whether the published FIT falls inside
+    the simulator's default 95% interval (Ea uncertain);
+  - MTBF: 1e9 / simulator FIT against the published MTBF;
+  - AF: the simulator's AF at 0.7 eV against the table's AF column.
+- **Expected:** TI rows reproduce (their published FIT rests on the same n, t, f as our table).
+  Non-TI rows may not, because the team found their published values rest on more data (Section 14).
+- **Result (5,000 draws, seed 5300):**
 
-### 11c. Real result 2: industry reliability-prediction handbooks
+| Family | Published FIT | Simulator at 60% | Ratio | Published inside simulator 95% CI | Verdict |
+|---|---|---|---|---|---|
+| TI C2000 | 6.19 | 6.17 | 1.00 | yes | reproduced |
+| TI TMCS1101 | 1.7 | 1.67 | 0.98 | yes | reproduced |
+| TI BQ79656 | 0.1 | 0.115 | 1.15 | yes | reproduced (TI rounds to 0.1) |
+| TI TMP4719 | 0.1 | 0.117 | 1.17 | yes | reproduced (TI rounds to 0.1) |
+| TI ISO7741 | 0.2 | 0.132 | 0.66 | yes | reproduced within 2× (rounded) |
+| TI UCC21750 | 0.2 | 0.133 | 0.66 | yes | reproduced within 2× (rounded) |
+| Renesas RH850 | 0.0011 | 15.5 | 14,000 | no | simulator higher: Renesas uses more data (verified) |
+| ADI LTC6811-1 | 33.95 | 0.32 | 0.009 | no | simulator lower: ADI's basis differs (verified) |
+| ADI ADuM141E | 20.23 | 0.45 | 0.022 | no | simulator lower: basis unknown |
+| ADI ADuM4135 | 11.28 | 0.36 | 0.032 | no | simulator lower: 11.28 not found in ADI's report |
 
-- **Comparison:** predicted FIT for the same part *type* at the same temperature, from Siemens
-  SN 29500, IEC 61709 and MIL-HDBK-217F Notice 2 (IC category, complexity and temperature
-  factors), stored in `data/reference/handbook_rates.csv` with sources.
-- **Metric:** log₁₀(simulator / handbook).
-- **Expected:**
-  - Agreement within about one order of magnitude.
-  - Simulator values *at or below* SN 29500 / IEC 61709, because HTOL covers only thermal
-    mechanisms and modern automotive ICs outperform reference rates.
-  - Simulator values *well below* MIL-HDBK-217F, which is known to be pessimistic for modern
-    parts.
-- `[TODO: collect handbook values for the six part types]`
+  - **AF:** the simulator's AF equals the table's AF exactly wherever the table gives one (77.6454
+    for 125 → 55 °C, 259.18 for RH850's 150 → 55 °C).
+  - **MTBF:** the simulator's MTBF matches TI's published MTBF (e.g. 8.71×10⁹ h for BQ79656 and
+    TMP4719, 1.62×10⁸ h for C2000). The table's MTBF and FIT disagree with each other for
+    BQ79656/TMP4719 (0.1 FIT is rounded) and for LTC6811-1 (MTBF 6.07×10⁹ h ⇔ 0.16 FIT, not 33.95).
+  - **Conclusion:** every published value that rests on the same test data as our table is
+    reproduced by the full simulator and lies inside its 95% interval. The values that are not
+    reproduced are the ones the team already found to rest on different data.
+- Outputs (generated locally by `code/03_validation.py`, not committed): `results/tables/validation_supplier_fit.csv`, `results/figures/validation_supplier_fit.png`.
 
-### 11d. Real result 3: field evidence
+### 11c. Industry handbooks `[DROPPED]`
 
-Collected in `data/reference/field_evidence.csv`, with sources:
-- **Field failure rates** published for automotive ICs, as ppm or FIT from supplier quality
-  reports, AEC/industry papers, or zero-defect program targets.
-- **Real warranty and recall cases** for these component types:
-  - the BMW HV-battery temperature sensor extended warranty (10 yr / 120,000 mi);
-  - the Toyota Prius inverter current-sensor campaign;
-  - the Mercedes EPS-ECU solder recall;
-  - (charter references 1–4).
+Dropped by team decision (2026-10-31): the team will not supply handbook data, and the public
+per-part figures are incomplete (TI's C2000 FMEDA rates are under NDA).
 
-**Use:** recall populations rarely give a failure *rate*, so these are **plausibility checks**.
-- Where a field rate exists: compare it to the simulator's FIT at a realistic profile. The
-  expected direction is simulator ≤ field (A8).
-- Where only a case exists: check whether the simulator flags that component type as a large
-  share of system λ, or as sensitive to temperature.
+### 11d. Field evidence `[DROPPED]`
 
-`[TODO: collect field data]`
+Dropped by team decision (2026-10-31), for the same reason. A8 (only thermal mechanisms) still
+means the simulator is expected to under-predict field failure rates; this is stated as a
+limitation instead of being measured.
 
-### 11e. Known-truth coverage study
+### 11e. Known-truth coverage study ✅
 
 1. Invent 1,000 synthetic "suppliers", each with a true λ.
 2. Generate an HTOL result for each by Poisson-sampling failures from realistic n, t and T_test
@@ -500,8 +567,42 @@ Collected in `data/reference/field_evidence.csv`, with sources:
    truly better part.
 
 **Expected:** coverage near 95%, and P(B outlasts A) well calibrated (when it says 0.8, B is truly
-better about 80% of the time). This is the strongest check that the confidence intervals are
-valid, and it needs no new data.
+better about 80% of the time).
+
+**Design** (`functions/validation.py`, `code/03_validation.py`, seeds 11 and 12, 55 °C):
+- n from the library's range (231 to 101,758), t = 1,000 h, T_test 125 or 150 °C, true Ea drawn
+  as in A2.
+- Two "worlds" for the true FIT: **log-uniform** over 0.01–100 FIT (realistic: many zero-failure
+  tests) and **uniform** over 0–100 FIT (close to the model's own prior, A5).
+- Calibration pairs share T_test and true Ea (A2).
+
+**Results (1,000 suppliers, 1,000 pairs per world):**
+
+| Expected failures in the test | Suppliers (log-uniform) | Central 95% coverage | Upper 97.5% coverage |
+|---|---|---|---|
+| < 0.1 | 310 | 37% | 100% |
+| 0.1–1 | 248 | 94% | 100% |
+| 1–10 | 210 | 96% | 100% |
+| > 10 | 232 | 95% | 99% |
+| all | 1,000 | 77% | 99.8% |
+
+- **The upper bound is valid everywhere** (99.8% ≥ 97.5%). The supplier-style claim "FIT is at
+  most X" is trustworthy for every part.
+- **The central interval is valid once a test could expect ≥ 0.1 failures** (94–96%). For very
+  reliable parts on small tests, its *lower* end sits above the truth, because the data cannot
+  tell how far below the upper bound the true rate is. In the uniform world, where such parts are
+  rare, overall coverage is 95.3%.
+- **P(B outlasts A):** Brier score 0.12 in the uniform world (a coin is 0.25) and close to
+  calibrated; 0.19 in the log-uniform world, where it is **overconfident**: when it says ≥ 0.8, B is
+  truly better 84% of the time; when it says ≤ 0.2, B is still truly better 20% of the time. This
+  comes from zero-failure pairs, where P mostly reflects which part was tested more ("demonstrated
+  reliability"), not which is truly better. One bin (P ≈ 0.5, uniform world, ~90 pairs) read 0.69;
+  three other seeds gave 0.44, 0.56 and 0.53, so this is sampling noise.
+- **Report wording:** quote upper bounds as guarantees, and present P(B outlasts A) as "strength
+  of the test evidence", not as the probability that B is truly better.
+- Outputs (generated locally by `code/03_validation.py`, not committed): `results/tables/validation_coverage.csv`, `validation_calibration.csv`,
+  `validation_summary.csv`; figures `results/figures/validation_coverage.png`,
+  `validation_calibration.png`.
 
 ## 12. Code architecture
 
@@ -514,19 +615,31 @@ functions/
   library.py        load_library(), get_part()                                 component library
   simulator.py      evaluate(config, profile)               → component + system tables  (Mode 1)
                     compare(config_a, config_b, profile)    → A, B, differences, P(B > A) (Mode 2)
-  validation.py     supplier_check(), handbook_check(), field_check(), coverage_study()  Section 11
+  candidates.py     select(candidates, profile, mission_hours, ...) → candidate table, ranked
+                    combinations, warnings  (Mode 3: E12, E15–E17, A11–A12)
+  validation.py     supplier_check(), coverage_study(), calibration_study()   Section 11b, 11e
+  interface.py      parse_profile(), component_table(), system_table(), difference_table()
+                    (input parsing and readable tables for the run script and the later UI)
   finance.py        warranty_cost(), eval_time_cost()                          Section 10
 code/
   01_clean_data.py    raw xlsx → data/components.csv + data/codebook.md
-  02_results.py       runs the simulator for every result in Section 9 → results/tables, results/figures
-  03_validation.py    Section 11b–11e → validation tables and figures
+  02_run_simulator.py the simulator for a user: asks for the operating temperature (or profile) and
+                      the parts (Modes 1-2) or the user's own candidates (Mode 3, interactively or
+                      --candidates file.csv), prints every output, saves CSVs to
+                      results/tables/runs/ (git-ignored). Also runs from one command:
+                      --temp 55 [--compare "ECU MCU=R7F7016903AFP-C"]
+  03_validation.py    Section 11b and 11e → validation tables and figures
+  06_results.py       runs the simulator for every result in Section 9 → results/tables, results/figures
   04_financial.py     Section 10 → before/after cost table with CIs
   05_make_report.py   writes reports/*.docx from the results tables
 data/reference/
-  handbook_rates.csv, field_evidence.csv   (with source citations)
+  published_fit.csv, fit_verification.csv   (published values: validation only, never model input)
+data/examples/
+  candidates_example.csv   Mode 3 input template, filled with real library data
 tests/
   test_library.py, test_equations.py (E1–E6, draws), test_reliability.py (E7–E10, E14),
-  test_simulator.py, test_validation.py
+  test_simulator.py, test_validation.py (11b, 11e), test_interface.py (run script),
+  test_candidates.py (Mode 3)
 ```
 
 - A configuration is a plain mapping from slot to part, e.g.
@@ -546,8 +659,9 @@ Each milestone ends with its tests passing and this file updated.
 | M2 ✅ | Equation functions (E1–E10, E14) and Monte Carlo draws (A2, A5) | 11a tests for these pass (50 tests in total) |
 | M3 ✅ | Simulator Mode 1 `evaluate()` | Component + system outputs with CIs for any 1–6 slot configuration and any profile; 18 tests in `tests/test_simulator.py` (68 in total) |
 | M4 ✅ | Simulator Mode 2 `compare()` | A, B, differences and P(B outlasts A); self-comparison checks pass; 23 tests in `tests/test_simulator.py` (73 in total) |
-| M5 ✅ | Verification | All 11a tests pass (77 tests; 11b on hold) |
-| M6 | Real-result validation | 11c–11e done, reference data cited |
+| M5 ✅ | Verification | All 11a tests pass (77 tests) |
+| M6 ✅ | Real-result validation, and a runnable simulator | 11b (published FIT/MTBF/AF) and 11e (coverage, calibration) done, 11c–11d dropped; `code/02_run_simulator.py` asks for the operating temperature and prints all outputs; 94 tests pass |
+| M6b ✅ | Mode 3: supplier selection | `select()` for any number of user candidates per slot (raw HTOL data or report FIT/MTTF), requirement check, P(best), ranked combinations and warranty exposure; in the run script; 19 tests in `tests/test_candidates.py` (113 in total) |
 | M7 | Results + financial | Section 9 and 10 tables and figures in `results/` |
 | M8 | Reports | Preliminary Results and Financial Impacts .docx in `reports/` |
 | M9 | User interface `[LATER]` | Front end over `evaluate()` / `compare()` |
@@ -556,7 +670,8 @@ Each milestone ends with its tests passing and this file updated.
 
 **Rule:**
 - The simulator uses only the parts' **raw test data**, which keeps the common basis.
-- Published FITs are stored in `data/reference/` and not used (11b on hold).
+- Published FITs are stored in `data/reference/` and are never model inputs; they are used only
+  to validate the simulator (11b).
 - A part missing any of T_test, t, n, f or Ea is `usable = False` and is excluded from simulation.
   We never fill the gap with a guess.
 - The raw table's "Mission time = 120,000 hours" column isn't used.
@@ -607,3 +722,8 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-10-31 | Team decision (A7): the 2,920 h warranty (8 yr × 1 powered-on h/day) is adopted as one warranty for the whole system, no longer a placeholder. Source for 1 h/day still to cite. |
 | 2026-10-31 | M4 done. `functions/simulator.py` adds `compare()` (Mode 2: both configurations on one set of draws, E11 differences per draw for every system metric, P(meets warranty) for each), `p_outlasts()` (E13, ties count half) and `system_draws()` (shared by `evaluate()` and `compare()`). Tests: self-comparison gives Δ = 0 and P = 0.5; LTC6811-1 vs BQ79656 matches the closed form D_B/(D_A+D_B) = 0.733; paired per-draw differences; adding slots never lowers λ_sys. Example at 55 °C, A = all-TI: B = RH850 MCU gives system FIT 13.7 vs 7.0, P(B outlasts A) = 0.29; B = ADI AFE + isolator + gate driver gives 7.9 vs 7.0, P = 0.09. 73 tests pass. |
 | 2026-10-31 | M5 done. 11a now maps every check to its test(s) and result. New checks: λ monotone in T_op over 25–125 °C; whole-pipeline check of `evaluate()` against numerical integration over the Ea density (median 4.47 vs 4.54 FIT, 97.5% 35.7 vs 34.0); MC precision over 10 seeds (median system FIT 7.03–7.37); Jeffreys prior lowers FIT. 77 tests pass. |
+| 2026-10-31 | M6 done. Team decisions: (1) validate against the parameter table's published FIT, MTBF and AF (still never model inputs); (2) drop handbook (11c) and field (11d) comparisons. New `validation.supplier_check()` (11b) runs the full simulator at each part's published conditions: all six TI families reproduced within 2× (C2000 6.17 vs 6.19) and inside the 95% CI, AF exact, MTBF matches; RH850, LTC6811-1, ADuM141E, ADuM4135 not reproduced (different published basis). New coverage and calibration study (11e): upper 97.5% bound covers 99.8%; central 95% interval 94–96% once a test expects ≥ 0.1 failures but 37% below that; P(B outlasts A) Brier 0.12 (model-consistent) / 0.19 (realistic), overconfident for zero-failure pairs. `draw_library()` gains `ea_mode="fixed"` (Ea = 0.7). New `code/02_run_simulator.py` (asks for the operating temperature or profile and parts, prints all Mode 1/2 outputs; also one-command use) with `functions/interface.py`; run outputs git-ignored. Section 9's results script renumbered `06_results.py`. 94 tests pass. |
+| 2026-10-31 | M6b: Mode 3 supplier selection (team scenario: a vehicle maker compares candidate suppliers tested at different temperatures, at its own condition, e.g. 1,000 h at 200 °C). New `functions/candidates.py` (`select()`), E15 (report FIT/MTTF → test evidence), E16 (P(best of k)), E17 (requirement R(mission) ≥ target with confidence), A11 (summary defaults: 60%, f = 0), A12 (Ea from the report, else the library median 0.7 with A2 spread). Skipped slots are left out of the system. Warranty exposure (E12) per candidate and per combination, with extra cost vs the best combination. Warnings above 150 °C and above a test temperature. Run script gains Mode 3 (interactive and `--candidates`); example input `data/examples/candidates_example.csv` uses real library data. 113 tests pass. |
+| 2026-10-31 | Team decision (A13): Mode 3's required confidence is fixed at 95% and is no longer an input (removed from the prompt and `--confidence`). Explained why the MCUs fail the 200 °C example: at 200 °C, C2000 would need ~40× and RH850 ~99× more test device-hours to show R(1,000 h) ≥ 0.999 with 95% confidence; at 55 °C both pass. 113 tests pass. |
+| 2026-10-31 | Mode 3 output now leads with reliability at the user's condition (new `reliability_table()`: AF, R(mission) with 95% CI, FIT, MTTF, B0.1 per candidate), for operating temperatures below or above each test temperature alike. Removed the "extrapolated upward" warning (AF < 1 above T_test is normal Arrhenius use); the > 150 °C remark is now a note. Lower bounds shown to 6 decimals so borderline pass/fail is visible. 113 tests pass. |
+| 2026-10-31 | The simulator is for users' own inputs: result files from our test and validation runs on the original data (validation tables/figures, demo runs) are not committed; `code/03_validation.py` regenerates them. Mode 3 printed tables now show MTTF and B0.1 with 95% CIs and warranty failures next to cost. 114 tests pass. |
