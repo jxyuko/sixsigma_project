@@ -27,7 +27,7 @@ Contents:
 7. [Equations](#7-equations) |
 8. [Simulation engine](#8-simulation-engine) |
 9. [Preliminary Results](#9-preliminary-results) |
-10. [Warranty exposure and cost](#10-warranty-exposure-and-cost) |
+10. [Warranty exposure, cost and Financial Impacts](#10-warranty-exposure-cost-and-financial-impacts) |
 11. [Evaluating the simulator](#11-evaluating-the-simulator) |
 12. [Code architecture](#12-code-architecture) |
 13. [Build order](#13-build-order) |
@@ -285,6 +285,7 @@ Each assumption has an ID so code comments and the report can cite it.
 | A12 | **Activation energy for user candidates:** a value stated in the report is used as given (fixed). Otherwise Ea is drawn as in A2, centred on the library ("training data") median Ea, which is 0.7 eV because every library report assumes 0.7. | Uses the supplier's own physics when known, and the evidence in our dataset when not. | `[DEFAULT]` |
 | A13 | **Required confidence is fixed at 95%.** A candidate meets the target only if the 95% lower confidence bound on R(mission) is at least the target (E17). | Team decision (2026-10-31): one standard for every comparison, matching the 95% intervals used everywhere else. | `[DECIDED]` |
 | A14 | **Cost basis for warranty exposure:** exposure is reported per 1,000 vehicles unless the user gives a fleet size. A candidate's unit price is the user's, else the Sheet2 price of a matching part number, else the Sheet2 average for its slot. Cost per warranty failure is the user's repair cost, else the part's unit price. Total cost = purchase (vehicles × unit price) + expected warranty cost. | The user may not know fleet size or repair cost. Per-1,000 figures are readable without them, and Sheet2 prices are sourced (distributor links). Parts-only cost is a **lower bound**: real repairs add labour and often a whole module, so it understates warranty cost. | `[DECIDED]` (team, 2026-10-31) |
+| A15 | **Prices of library candidates in the financial analysis** are the library's Sheet2 match: the exact part, an orderable variant, or a **family proxy** (C2000 priced as F2800157, RH850 as R7F7016843); TMCS1101 has none and uses the Sheet2 current-sensor average. | These are the only sourced prices in our data. The MCU proxy prices drive most of the purchase difference, so a sensitivity with both MCUs at the Sheet2 ECU average is always reported (Section 10). | `[DEFAULT]` |
 
 ## 7. Equations
 
@@ -386,6 +387,16 @@ AF_needed = χ²(1 − α; 2f + 2)/(2 n t λ*), then 1/T = 1/T_test + k ln(AF_ne
 **E21 · Two-rate test.** Exact conditional test that two Poisson rates are equal: given f₁ + f₂
 failures, f₂ ~ Binomial(f₁ + f₂, D₂/(D₁ + D₂)) under H₀. With f₁ = f₂ = 0, p = 1 (no evidence).
 
+**E22 · Saving from a change.** For a "before" and an "after" combination on the same draws:
+saving = cost_before − cost_after, per draw, for purchase, warranty and total cost (E12); reported as
+median, standard error and 95% interval (the course's financial-analysis pattern), with
+P(after cheaper) = share of draws with saving > 0.
+
+**E23 · Break-even repair cost.** The cost of one warranty repair at which the change's warranty
+saving equals its extra purchase cost: C* = (purchase_after − purchase_before) / (failures_before −
+failures_after), per draw where the change avoids failures; reported as median and 95% interval over
+those draws. If the change is cheaper to buy, it pays off at any repair cost.
+
 ## 8. Simulation engine
 
 The course pattern (`ZZ_financial_analysis.py`) bootstraps raw observations. **We have no raw
@@ -456,6 +467,13 @@ exposure as failures per 1,000 vehicles; no costs. Figures are drawn with plotni
   roughly 2× either way; the prior moves them 2.5× lower (Jeffreys); Ea treatment and MC seed are
   negligible (< 5%).
 - **Validation:** as in 11b and 11e.
+- **Data caveat (team decision 2026-11-02):** every result is *demonstrated reliability from the
+  qualification test data in our table*. For RH850 the table holds only one 231-device test while
+  Renesas's verified FIT rests on far more data, so RH850 is very likely under-rated; for LTC6811-1,
+  ADuM141E and ADuM4135 our FITs are lower than ADI publishes, so they may be optimistic (Section 14).
+  The supplier comparisons and the "least reliable" combination therefore compare the evidence in our
+  table, not settled true reliability. The same caveat heads every key-numbers file
+  (`analysis/caveats.py`).
 
 ### 9b. Significance and confidence
 
@@ -488,11 +506,9 @@ chi-square bounds (k-factors), one-sample t-test, proportion CIs and the percent
 are valid (1c), so the demonstrated-reliability conclusions (2a, 2b) can be trusted; supplier rankings
 (2c) are not statistically significant, and the temperature profile effect (2d) is.
 
-## 10. Warranty exposure and cost
+## 10. Warranty exposure, cost and Financial Impacts
 
-Built into the simulator (A14, E12). A Financial Impacts report is **not planned for now** (team
-decision 2026-11-01).
-
+**Cost model, built into the simulator** (A14, E12):
 - **Per candidate and per combination:** warranty failures N · F(t_w), warranty cost
   N · F(t_w) · C_fail and total cost = N · unit price + warranty cost, per draw, so 95% CIs come
   straight from the simulation.
@@ -501,11 +517,48 @@ decision 2026-11-01).
 - **Prices:** Sheet2 of `parameter_table.xlsx` (distributor prices with links), cleaned into
   `data/prices.csv`: the candidate's own price if entered, else the Sheet2 price of a matching part
   number, else the Sheet2 average for its slot.
-- **Before vs after:** any two combinations; the simulator reports each one's total cost vs the
-  most reliable combination (paired draws) and names the lowest-cost combination.
 
-**Suggestion kept for later:** a cited cost of one warranty repair (part + labour, e.g. ECU/BMS
-module replacement) to replace the parts-only default.
+**Financial Impacts analysis** (team decisions 2026-11-02; `analysis/03_financial_impacts.py`,
+statistics in `functions/finance.py`, tests in `tests/test_finance.py`, outputs in
+`reports/financial_impacts/`). Report writing happens outside the repo.
+- **Change evaluated:** BEFORE = the least reliable combination of our library candidates
+  (RH850 + LTC6811-1 + ADuM141E + TMP4719 + ADuM4135 + TMCS1101); AFTER = the simulator's
+  recommended, most reliable combination (all TI).
+- **Cost:** per 1,000 vehicles; purchase at Sheet2 prices (A15); warranty = expected failures over
+  2,920 h × unit price (parts-only, by team decision); total = purchase + warranty.
+- **Conditions:** 55 °C and the 40/70/105 °C profile (the hot case).
+- **Uncertainty:** the simulator's 5,000 paired draws; median, SE and 95% interval (E22);
+  break-even repair cost (E23).
+- **Price sensitivity:** both MCUs at the Sheet2 ECU average, because the MCU family-proxy prices
+  drive most of the purchase difference (A15).
+- **Engineering evaluation time:** dropped (team decision 2026-11-02). It needs a measured
+  reduction in evaluation time; the charter's 20% is a target, not a result, and no published study
+  gives hours per supplier-reliability evaluation (searched: the only peer-reviewed figure, Robinson
+  2010, JASIST 61(4), is 55.75% of engineers' time on all information work). $74.66/h is verified
+  (NHTSA, Federal Register, 14 Feb 2025, docket NHTSA-2025-0004: BLS May 2023 engineer wage in motor
+  vehicle manufacturing $52.56 ÷ 0.704) and kept for when a reduction can be measured.
+
+**Results (2026-11-02, per 1,000 vehicles, 2,920 h):**
+
+| Condition | Price case | Saving (before − after), median (95% CI) | P(after cheaper) | Break-even repair cost |
+|---|---|---|---|---|
+| 55 °C | Sheet2 (MCU proxies) | $3,080 ($3,080–3,085) | 1.00 | pays off at any repair cost |
+| 40/70/105 °C | Sheet2 (MCU proxies) | $3,083 ($3,078–3,100) | 1.00 | pays off at any repair cost |
+| 55 °C | equal MCU prices | −$4,980 (−$4,981 to −$4,976) | 0.00 | $147,630 ($16,393–5,417,699) |
+| 40/70/105 °C | equal MCU prices | −$4,978 (−$4,984 to −$4,961) | 0.00 | $22,673 ($3,679–735,161) |
+
+- **Warranty failures** (per 1,000 vehicles): 0.042 → 0.021 at 55 °C, 0.272 → 0.132 on the profile;
+  the change avoids failures in 74% of draws (not significant at 95%: the CI of failures avoided
+  includes 0).
+- **Parts-only warranty saving** is USD 0.39 at 55 °C and USD 2.59 on the profile: negligible
+  next to purchase prices. Almost all of the financial difference is the purchase price, and its
+  sign depends on the MCU prices, which are family proxies (A15).
+- **Caveat:** the BEFORE combination is least reliable *by the evidence in our table*, which
+  under-rates the RH850 and may over-rate the ADI parts (Section 9, Section 14).
+- **Reading:** with Sheet2 prices the recommended suppliers are both more reliable and cheaper. If
+  MCU prices are equal, the recommended parts cost $4.98 more per vehicle, and the reliability gain
+  repays that only if one warranty repair costs more than about $148k at 55 °C or $23k on the hot
+  profile (medians).
 
 ## 11. Evaluating the simulator
 
@@ -659,6 +712,7 @@ functions/                 the simulator (plain functions, all tested)
   validation.py     supplier_check(), coverage_study(), calibration_study()          11b, 11e
   significance.py   max_failure_rate(), target_test(), max_demonstrated_temp(), two_rate_test(),
                     one_sample_t(), proportion_ci(), bootstrap_ci(), mc_standard_error()   E18–E21, 9b
+  finance.py        qi_cost(), combination_costs(), compare_costs(), break_even_repair_cost()  E12, E22–E23
 code/
   01_clean_data.py       raw xlsx → data/components.csv, data/prices.csv, data/reference/published_fit.csv
   02_run_simulator.py    the program users run: asks for temperature, mission hours and candidates
@@ -668,14 +722,16 @@ code/
 analysis/                  report analyses, kept apart from the simulator (they only call functions/)
   01_preliminary_results.py   Section 9 → reports/preliminary_results/
   02_significance.py          Section 9b → reports/preliminary_results/ (sig_*)
+  03_financial_impacts.py     Section 10 → reports/financial_impacts/
   plots.py                    every report figure, drawn with plotnine
 reports/preliminary_results/  tables/, figures/, key_numbers.md, key_numbers_significance.md
+reports/financial_impacts/    tables/, figures/, key_numbers_financial.md
 data/
   components.csv, prices.csv, codebook.md, examples/candidates_example.csv, reference/, raw/
 tests/
   test_library, test_equations (E1–E6, draws), test_reliability (E7–E10, E14), test_simulator
   (internal engine), test_candidates (the simulator), test_interface, test_validation (11b, 11e),
-  test_significance (E18–E21), test_analysis
+  test_significance (E18–E21), test_finance (E22–E23), test_analysis
 ```
 
 - A candidate is a plain dict (or a row of a candidates CSV): slot, name, test temperature, and
@@ -698,7 +754,8 @@ Each milestone ended with its tests passing and this file updated.
 | M6b–c | The user-facing simulator: `select()`, `code/02_run_simulator.py`, Sheet2 costs | ✅ |
 | M7a | Preliminary Results analysis (Section 9) | ✅ |
 | M7c | Significance and confidence (Section 9b), plotnine figures | ✅ |
-| — | Report writing (.docx), Financial Impacts analysis | not planned for now (team decision 2026-11-01) |
+| M7b | Financial Impacts analysis (Section 10) | ✅ supplier change; evaluation-time benefit dropped |
+| — | Report writing (.docx) | done by the team outside the repo |
 | — | Web front end over `select()`; quantity per slot | `[LATER]` |
 
 ## 14. Data issues
@@ -722,6 +779,13 @@ Each milestone ended with its tests passing and this file updated.
 - Some prices are for orderable variants or family proxies; each is flagged in `flag`.
 - Sheet2 lists no individual current-sensor prices, only a stated average (17.35 USD over 6
   products); the simulator uses that average (A14).
+
+**Effect on results (team decision 2026-11-02: keep these parts, label the results).** RH850 is
+likely under-rated (one 231-device test vs Renesas's larger verified basis); LTC6811-1, ADuM141E and
+ADuM4135 may be over-rated (our FIT lower than ADI's). They stay in the library because removing them
+would leave one candidate per slot and no comparison; every report states the caveat. Two fixes are
+open: re-run with their published FITs as report-summary inputs (E15) as a sensitivity, or transcribe
+the full test data from the Renesas and ADI reports.
 
 **Published vs calculated FIT.** The team checked the supplier reports (2026-10-30). The raw table
 **mixes FITs reported directly by manufacturers with FITs that can be calculated from the
@@ -768,3 +832,5 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-11-01 | M7c: significance and confidence (Section 9b). Team decision: the Preliminary Results reports statistics about the simulator (verification and validation) and the statistics it produces; Financial Impacts and report writing are not planned for now. New `functions/significance.py` (E18 course maximum failure rate, E19 target test, E20 max demonstrated temperature, E21 exact two-rate test, one-sample t-test, Clopper-Pearson CI, bootstrap CI, MC error) with 15 tests; new `analysis/02_significance.py` (11 tables, 6 figures, `key_numbers_significance.md`). Key results: simulator = chi-square within 0.65%; vs published TI p = 0.42; all parts demonstrate the target at 55 °C; all-TI system demonstrated up to 95 °C; no supplier difference significant; profile effect 3.77× (2.33–6.46). 135 tests pass. |
 | 2026-11-01 | Report figures redrawn with plotnine (ggplot grammar, as in the course's Python track) so the team can run and adapt them in Posit Cloud: new `analysis/plots.py` holds all 10 figures; both analysis scripts call it. Figure 2 split into 2a (failures vs temperature) and 2b (P(meets target) vs temperature), one axis each. `plotnine` added to requirements.txt. Numbers unchanged; 135 tests pass. |
 | 2026-11-01 | v3 roadmap: rewritten to match the current design (v2 saved in `docs/roadmap_history/ROADMAP_v2_2026-11-01.md`). Sections 2, 3, 8, 10, 12, 13 rewritten: one user-facing simulator (`select()`), the library and `evaluate()`/`compare()` as the build-and-test base, cost model (Section 10, formerly Financial model), current code layout and milestones; Section 9 renamed Preliminary Results with 9b nested; 11c–11d merged as dropped; 'Mode' wording removed from assumptions and equations (numbers unchanged). Code comments, CLAUDE.md and the codebook updated to match. No numbers changed. |
+| 2026-11-02 | M7b Financial Impacts. Team decisions: evaluate the supplier change (least reliable → recommended); 55 °C plus the 40/70/105 °C profile; parts-only repair cost; per 1,000 vehicles; drop the engineering-time benefit until a reduction can be measured (charter's 20% is a target; no published hours per evaluation). New `functions/finance.py` (E22 saving, E23 break-even repair cost, `qi_cost`) with 6 tests; `analysis/03_financial_impacts.py` (4 tables, 3 plotnine figures, `key_numbers_financial.md`); A15 (library prices incl. MCU family proxies) with an equal-MCU-price sensitivity. Results: saving $3,080 per 1,000 vehicles with Sheet2 prices; −$4,980 with equal MCU prices, break-even repair cost $148k (55 °C) / $23k (profile). $74.66/h verified on govinfo.gov. 141 tests pass. |
+| 2026-11-02 | Team decision: keep RH850, LTC6811-1, ADuM141E and ADuM4135 in the library and label every result as demonstrated reliability from our table's test data (RH850 likely under-rated, ADI parts possibly over-rated). New `analysis/caveats.py`; the caveat heads all three key-numbers files; Sections 9, 10 and 14 updated. Numbers unchanged. |

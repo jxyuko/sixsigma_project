@@ -89,7 +89,7 @@ data/             cleaned inputs (components.csv, prices.csv), codebook, example
 functions/        the simulator: equations, Monte Carlo engine, statistics (all tested)
 code/             01 clean data, 02 run the simulator, 03 validation
 analysis/         report analyses and plotnine figures (only call functions/)
-reports/          Preliminary Results tables, figures and key numbers
+reports/          Preliminary Results and Financial Impacts tables, figures and key numbers
 results/          local outputs of simulator runs and validation (git-ignored)
 tests/            known-answer and degenerate-case checks for every statistic
 ROADMAP.md        the single source of truth: approach, assumptions, equations, results, changelog
@@ -107,4 +107,5 @@ To regenerate the report results and figures:
 ```bash
 .venv/Scripts/python analysis/01_preliminary_results.py
 .venv/Scripts/python analysis/02_significance.py
+.venv/Scripts/python analysis/03_financial_impacts.py
 ```
