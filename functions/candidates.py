@@ -167,7 +167,12 @@ def p_best(lam_matrix):
 # (a parts-only lower bound). Total cost = purchase + expected warranty cost.
 def select(candidates, profile, mission_hours, target_r=DEFAULT_TARGET_R,
            warranty_hours=None, fleet_size=DEFAULT_FLEET, repair_cost=None,
-           n_draws=N_DRAWS, seed=SEED, prior="uniform", cl=0.95, library=None, prices=None, top=10):
+           n_draws=N_DRAWS, seed=SEED, prior="uniform", cl=0.95, library=None, prices=None, top=10,
+           ea_mode="shared"):
+    # ea_mode (8d sensitivity) for candidates without a stated Ea: "shared" = one draw per run for
+    # all (A2, default); "independent" = a separate draw per candidate; "fixed" = the library Ea (0.7)
+    if ea_mode not in ("shared", "independent", "fixed"):
+        raise ValueError("ea_mode must be 'shared', 'independent' or 'fixed'")
     if mission_hours <= 0:
         raise ValueError("mission hours must be positive")
     if not 0 < target_r < 1:
@@ -196,7 +201,14 @@ def select(candidates, profile, mission_hours, target_r=DEFAULT_TARGET_R,
 
     rows, lam = [], {}
     for _, c in cand.iterrows():
-        ea = ea_shared if c["ea_source"].startswith("library") else np.full(n_draws, c["ea_ev"])
+        if not c["ea_source"].startswith("library"):
+            ea = np.full(n_draws, c["ea_ev"])
+        elif ea_mode == "independent":
+            ea = rng.triangular(EA_MIN, min(max(ea0, EA_MIN), EA_MAX), EA_MAX, n_draws)
+        elif ea_mode == "fixed":
+            ea = np.full(n_draws, ea0)
+        else:
+            ea = ea_shared
         af = effective_af(profile, c["test_temp_c"], ea)                         # E6
         lam_test = rng.gamma(c["failures"] + PRIORS[prior], 1 / c["device_hours_test"], n_draws)   # E4
         lam[c["name"]] = lam_test / af
@@ -237,7 +249,8 @@ def select(candidates, profile, mission_hours, target_r=DEFAULT_TARGET_R,
                 "confidence": confidence, "warranty_hours": t_w, "fleet_size": fleet_size,
                 "repair_cost": repair_cost,
                 "cost_basis": "parts-only (unit price)" if repair_cost is None else "user repair cost",
-                "n_draws": n_draws, "seed": seed, "prior": prior, "cl": cl, "default_ea": ea0}
+                "n_draws": n_draws, "seed": seed, "prior": prior, "cl": cl, "default_ea": ea0,
+                "ea_mode": ea_mode}
     return Selection(table, combos, list(dict.fromkeys(warnings)), settings, lam, cheapest)
 
 

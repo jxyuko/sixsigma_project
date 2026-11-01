@@ -266,3 +266,17 @@ def test_printed_tables_show_every_output():
         assert col in combo.columns
     assert "Meets target" in key_table(sel).columns
     assert "Most reliable system: b" in summary_text(sel)
+
+
+def test_ea_modes_for_sensitivity():
+    cands = [raw("a", 1000), raw("b", 2000)]
+    fixed = select(cands, 55, 1000, ea_mode="fixed")
+    assert row(fixed, "a")["af_eff_lower"] == row(fixed, "a")["af_eff_upper"] == pytest.approx(accel_factor(55, 125, 0.7))
+    shared = select(cands, 55, 1000)
+    indep = select(cands, 55, 1000, ea_mode="independent")
+    # shared: both candidates (same T_test) get the same AF in every draw, so identical AF summaries
+    assert row(shared, "a")["af_eff_median"] == row(shared, "b")["af_eff_median"]
+    assert row(indep, "a")["af_eff_median"] != row(indep, "b")["af_eff_median"]
+    assert indep.settings["ea_mode"] == "independent"
+    with pytest.raises(ValueError):
+        select(cands, 55, 1000, ea_mode="other")

@@ -449,21 +449,49 @@ years of 24/7 operation, not calendar years. Calendar life depends on the duty a
 
 ## 9. Results for the Preliminary Results report
 
-All of these come from running the simulator.
+**Kept apart from the simulator code** (team decision 2026-11-01): `analysis/01_preliminary_results.py`
+only *calls* the simulator and writes to `reports/preliminary_results/` (`tables/`, `figures/`,
+`key_numbers.md`). It runs our library parts through the user-facing simulator as if they were a
+vehicle maker's candidates (one part per qualification family, A9).
 
-1. **Library table:** every usable part's test evidence (device-hours, failures) and its FIT at a
-   reference temperature, all from test data.
-2. **Mode 1 at a reference temperature:** a full six-slot configuration, giving the component
-   table and system R_sys(t) band, B0.1, WR and P(WR ≥ 1), all with 95% CIs.
-3. **Temperature sweep:** system B0.1 and P(WR ≥ 1) from 25 to 125 °C, showing where the
-   configuration stops meeting warranty. Also the profile vs mean-temperature comparison (E6).
-4. **Mode 2 examples:** the all-TI configuration against configurations that swap suppliers in
-   one or more slots, giving differences with CIs and P(B outlasts A).
-5. **Sensitivity** (8d).
-6. **Comparison to real results** (11b, 11e): simulator FIT against the parameter table's
-   published FIT on a log-scale chart, plus the coverage and calibration results.
+**Main condition** (team decision 2026-11-01): 55 °C (the parameter table's reference temperature),
+mission 2,920 h (A7), target R ≥ 0.999 with 95% confidence (A13), 5,000 draws, seed 5300. Warranty
+exposure as failures per 1,000 vehicles; no costs here (Section 10 is deferred).
+
+| # | Analysis | Statistic | Output |
+|---|---|---|---|
+| 1 | Measures | FIT, MTTF, R(mission), B0.1, 95% lower bound on R, P(R ≥ target), P(best), failures per 1,000 vehicles; each a median + 95% CI over 5,000 draws | all tables |
+| 2 | Common basis: every candidate at 55 °C with its test conditions and AF | E2–E9, E17 | Table 1, Figure 1 (forest plot, log FIT) |
+| 3 | Supplier comparison within each slot | paired failure-rate ratio (alternative / TI, 95% CI) and P(TI best) (E11, E16) | Table 2 |
+| 4 | System: all 16 combinations, most vs least reliable | system FIT, R(mission), B0.1, lower bound, P(meets target), P(best combination) (E8, E16, E17) | Table 3 |
+| 5 | Temperature sweep 25–150 °C, most vs least reliable system; profile vs its mean temperature | failures per 1,000 vehicles (95% CI), P(meets target); E6 | Figure 2, `profile_vs_mean_temperature.csv` |
+| 6 | Sensitivity, one assumption at a time (8d) | median failures per 1,000 vehicles for: temperature ±10 °C, mission ½ / ×2, Ea fixed / independent, Jeffreys prior, MC seed | Figure 3 (tornado) |
+| 7 | Validation | published FIT reproduced (11b); coverage (11e); Brier score of P(B outlasts A) | Table 4a, 4b |
+
+**Results (2026-11-01):**
+- **Per slot,** the TI candidate is more likely the more reliable in every contested slot
+  (P(TI best) 0.70–0.85), but every paired ratio's 95% CI spans 1 (e.g. isolator: ADuM141E's rate
+  is 3.65× ISO7741's, CI 0.29–110): with zero-failure tests the data favour TI without proving it.
+- **System:** the all-TI combination is the most reliable: system FIT 7.0 (95% CI 1.1–38),
+  R(2,920 h) = 0.99998 (95% lower bound 0.99991), meets the target, 0.021 failures per 1,000 vehicles
+  (0.003–0.112). The least reliable (RH850 + LTC6811 + ADuM141E + ADuM4135 + TMP4719 + TMCS1101) has
+  FIT 14.3 (1.8–109) and still meets the target at 55 °C. P(all-TI is truly the best of 16) = 0.32.
+- **Temperature:** the most reliable system meets the target up to 90 °C, the least reliable up to
+  75 °C. On the illustrative 40/70/105 °C profile the system FIT is 3.8× its value at the 62 °C mean.
+- **Sensitivity:** operating temperature (±10 °C) and mission length (½ / ×2) each move failures
+  roughly 2× either way; the prior moves them 2.5× lower (Jeffreys); Ea treatment and MC seed are
+  negligible (< 5%).
+- **Validation:** as in 11b and 11e.
 
 ## 10. Financial model
+
+**Deferred** (team decision 2026-11-01): the Financial Impacts report comes after the Preliminary
+Results. The simulator already computes warranty exposure and cost (A14); the report analysis will
+be added as `analysis/02_financial_impacts.py` → `reports/financial_impacts/`.
+
+**Suggestion kept for later:** a cited cost of one warranty repair (part + labour, e.g. ECU/BMS
+module replacement). Until then the cost per failure is the part's unit price, a parts-only lower
+bound, and costs are reported per 1,000 vehicles only.
 
 Unit prices come from Sheet2 of `parameter_table.xlsx` (distributor prices with links), cleaned
 into `data/prices.csv` (A14).
@@ -640,15 +668,16 @@ functions/
   finance.py        warranty_cost(), eval_time_cost()                          Section 10
 code/
   01_clean_data.py    raw xlsx → data/components.csv + data/codebook.md
-  02_run_simulator.py the simulator for a user: asks for the operating temperature (or profile) and
-                      the parts (Modes 1-2) or the user's own candidates (Mode 3, interactively or
-                      --candidates file.csv), prints every output, saves CSVs to
-                      results/tables/runs/ (git-ignored). Also runs from one command:
-                      --temp 55 [--compare "ECU MCU=R7F7016903AFP-C"]
+  02_run_simulator.py the simulator for a user: asks for the operating temperature (or profile),
+                      mission hours and candidates (or --temp --hours --candidates file.csv),
+                      prints SUMMARY → key table → details, saves CSVs to results/tables/runs/
+                      (git-ignored)
   03_validation.py    Section 11b and 11e → validation tables and figures
-  06_results.py       runs the simulator for every result in Section 9 → results/tables, results/figures
-  04_financial.py     Section 10 → before/after cost table with CIs
-  05_make_report.py   writes reports/*.docx from the results tables
+analysis/                report material, kept apart from the simulator (only calls functions/)
+  01_preliminary_results.py   Section 9 → reports/preliminary_results/ (tables, figures, key_numbers.md)
+  02_financial_impacts.py     Section 10 → reports/financial_impacts/   [LATER]
+reports/
+  preliminary_results/, financial_impacts/   report tables, figures and the .docx deliverables
 data/reference/
   published_fit.csv, fit_verification.csv   (published values: validation only, never model input)
 data/examples/
@@ -681,7 +710,8 @@ Each milestone ends with its tests passing and this file updated.
 | M6 ✅ | Real-result validation, and a runnable simulator | 11b (published FIT/MTBF/AF) and 11e (coverage, calibration) done, 11c–11d dropped; `code/02_run_simulator.py` asks for the operating temperature and prints all outputs; 94 tests pass |
 | M6b ✅ | Mode 3: supplier selection | `select()` for any number of user candidates per slot (raw HTOL data or report FIT/MTTF), requirement check, P(best), ranked combinations and warranty exposure; in the run script; 19 tests in `tests/test_candidates.py` (113 in total) |
 | M6c ✅ | One user-facing simulator | `code/02_run_simulator.py` runs supplier selection only (no library picking), required vs optional inputs, summary first, warranty exposure per 1,000 vehicles with Sheet2 prices; 117 tests |
-| M7 | Results + financial | Section 9 and 10 tables and figures in `results/` |
+| M7a ✅ | Preliminary Results analysis | Section 9 tables and figures in `reports/preliminary_results/` from `analysis/01_preliminary_results.py`; 120 tests |
+| M7b | Financial Impacts analysis `[LATER]` | Section 10 before/after cost with CIs in `reports/financial_impacts/` |
 | M8 | Reports | Preliminary Results and Financial Impacts .docx in `reports/` |
 | M9 | User interface `[LATER]` | Front end over `evaluate()` / `compare()` |
 
@@ -747,3 +777,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-10-31 | Mode 3 output now leads with reliability at the user's condition (new `reliability_table()`: AF, R(mission) with 95% CI, FIT, MTTF, B0.1 per candidate), for operating temperatures below or above each test temperature alike. Removed the "extrapolated upward" warning (AF < 1 above T_test is normal Arrhenius use); the > 150 °C remark is now a note. Lower bounds shown to 6 decimals so borderline pass/fail is visible. 113 tests pass. |
 | 2026-10-31 | The simulator is for users' own inputs: result files from our test and validation runs on the original data (validation tables/figures, demo runs) are not committed; `code/03_validation.py` regenerates them. Mode 3 printed tables now show MTTF and B0.1 with 95% CIs and warranty failures next to cost. 114 tests pass. |
 | 2026-10-31 | Team decisions: (1) users see only the supplier-selection simulator; the library is used to build and test it, and `evaluate()`/`compare()` remain only as the validation engine (Modes 1–2 removed from the run script); (2) warranty exposure without inputs the user may not know (A14): per 1,000 vehicles, unit prices from Sheet2 (new `data/prices.csv`, 30 parts + 6 slot averages; the current-sensor average has no listed rows), cost per failure = unit price (parts-only lower bound) unless a repair cost is given, total cost = purchase + warranty, lowest-cost combination reported. Run script rewritten: only temperature, mission hours and candidates are required; output is SUMMARY → key table → details on request. Arguments now `--temp --hours --candidates [--target --fleet --repair-cost --warranty-hours --details]`. 117 tests pass. |
+| 2026-11-01 | M7a done. Team decisions: report analyses live apart from the simulator (`analysis/` → `reports/`); main condition 55 °C, 2,920 h, target 0.999; Financial Impacts deferred; a cited repair cost kept as a suggestion; costs per 1,000 vehicles only. New `analysis/01_preliminary_results.py`: Tables 1–4, Figures 1–3, temperature sweep, profile vs mean, sensitivity, `key_numbers.md` (results in Section 9). `select()` gains `ea_mode` (shared / independent / fixed) for the sensitivity. New `tests/test_analysis.py` (paired ratio: identical evidence → 1, known answer D_ti/D_alt). 120 tests pass. |
