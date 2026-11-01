@@ -20,6 +20,7 @@ RAW = ROOT / "data" / "raw" / "parameter_table.xlsx"
 # Team-maintained record of which published FITs were checked against the supplier reports
 VERIFICATION = ROOT / "data" / "reference" / "fit_verification.csv"
 PUBLISHED_PATH = ROOT / "data" / "reference" / "published_fit.csv"
+PRICES_PATH = ROOT / "data" / "prices.csv"   # Sheet2 unit prices, used for cost (A14)
 
 CALC_NOTE = ("chi-square bound (E2-E5) at the published reference temperature and confidence level, "
              "from the table's n, t, f, T_test, Ea; assumes these are the supplier's full basis (A6)")
@@ -203,6 +204,41 @@ def build_library(raw, prices, verification):
     return lib[COLUMNS], lib[PUBLISHED_COLUMNS]
 
 
+# Sheet2 component categories -> slots
+PRICE_CATEGORY_SLOTS = {
+    "BMS monitor": "BMS AFE", "Digital isolator": "Digital isolator",
+    "Temperature sensor": "Temperature sensor", "Gate driver": "Gate driver",
+    "ECU / MCU": "ECU MCU", "ECU/MCU": "ECU MCU", "Current sensor": "Current sensor",
+}
+
+
+# build_prices(): Sheet2 -> data/prices.csv (A14). One row per priced part, plus the team's stated
+# average price per component type ("slot average"). Each stated average is checked against the
+# mean of its rows; the current-sensor average is given in Sheet2 without its individual rows.
+def build_prices(sheet):
+    header = sheet.index[sheet[0] == "Component category"][0]
+    parts = sheet.iloc[header + 1:].dropna(subset=[0, 2])
+    parts = pd.DataFrame({
+        "slot": parts[0].map(PRICE_CATEGORY_SLOTS), "kind": "part",
+        "supplier": parts[1].str.strip(), "part": parts[2].astype(str).str.strip(),
+        "unit_price_usd": parts[3].astype(float), "retailer": parts[4], "source": parts[5],
+    })
+    start = sheet.index[sheet[1] == "AVG Prices per product"][0]
+    avg = sheet.iloc[start + 1:].dropna(subset=[1, 2])
+    rows = []
+    for _, r in avg.iterrows():
+        slot = PRICE_CATEGORY_SLOTS[str(r[1]).strip()]
+        listed = parts.loc[parts["slot"] == slot, "unit_price_usd"]
+        note = (f"Sheet2 stated average over {int(r[3])} products; matches the listed rows"
+                if len(listed) and np.isclose(listed.mean(), r[2], rtol=1e-3)
+                else f"Sheet2 stated average over {int(r[3])} products; individual rows not listed in Sheet2")
+        rows.append({"slot": slot, "kind": "slot average", "supplier": "", "part": "",
+                     "unit_price_usd": float(r[2]), "retailer": "", "source": note})
+    out = pd.concat([parts, pd.DataFrame(rows)], ignore_index=True)
+    out["slot"] = pd.Categorical(out["slot"], categories=SLOTS, ordered=True)
+    return out.sort_values(["slot", "kind", "supplier"]).reset_index(drop=True)
+
+
 if __name__ == "__main__":
     raw = pd.read_excel(RAW, sheet_name="parameter_table")
     prices = pd.read_excel(RAW, sheet_name="Sheet2", header=3).dropna(subset=["Product / part number"])
@@ -210,6 +246,10 @@ if __name__ == "__main__":
     lib, published = build_library(raw, prices, verification)
     lib.to_csv(LIBRARY_PATH, index=False)
     published.to_csv(PUBLISHED_PATH, index=False)
+    price_table = build_prices(pd.read_excel(RAW, sheet_name="Sheet2", header=None))
+    price_table.to_csv(PRICES_PATH, index=False)
+    print(f"Wrote {PRICES_PATH.relative_to(ROOT)}: {(price_table['kind'] == 'part').sum()} priced parts, "
+          f"{(price_table['kind'] == 'slot average').sum()} slot averages")
 
     print(f"Wrote {LIBRARY_PATH.relative_to(ROOT)}: {len(lib)} parts, {lib['usable'].sum()} usable")
     print(lib.groupby("slot", observed=True)["part"].count().to_string())

@@ -1,16 +1,10 @@
 # test_interface.py
-# Input parsing and output formatting for the command-line simulator (code/02_run_simulator.py).
-
-import subprocess
-import sys
-from pathlib import Path
+# Input parsing for the user-facing simulator (functions/interface.py). The script itself is tested
+# end to end in tests/test_candidates.py.
 
 import pytest
 
-from functions.interface import DEFAULT_CONFIG, describe_profile, parse_profile
-from functions.library import SLOTS
-
-ROOT = Path(__file__).resolve().parents[1]
+from functions.interface import CANDIDATE_COLUMNS, describe_profile, parse_profile, read_candidates
 
 
 def test_parse_single_temperature():
@@ -36,30 +30,16 @@ def test_describe_profile():
     assert describe_profile([(40, 0.5), (70, 0.5)]) == "40 C for 50%, 70 C for 50%"
 
 
-def test_default_config_fills_all_six_slots():
-    assert set(DEFAULT_CONFIG) == set(SLOTS)
+def test_read_candidates_requires_key_columns(tmp_path):
+    bad = tmp_path / "bad.csv"
+    bad.write_text("slot,name\nGate driver,a\n")
+    with pytest.raises(ValueError):
+        read_candidates(bad)
 
 
-def run(*args, stdin=None):
-    return subprocess.run([sys.executable, str(ROOT / "code" / "02_run_simulator.py"), *args, "--draws", "500"],
-                          input=stdin, capture_output=True, text=True, cwd=ROOT, timeout=120)
-
-
-def test_script_mode1_from_temperature():
-    out = run("--temp", "55")
-    assert out.returncode == 0, out.stderr
-    assert "B0.1 life (hours)" in out.stdout and "P(meets warranty)" in out.stdout
-
-
-def test_script_mode2_compare():
-    out = run("--temp", "40:50,70:30,105:20", "--compare", "ECU MCU=R7F7016903AFP-C")
-    assert out.returncode == 0, out.stderr
-    assert "P(B outlasts A)" in out.stdout
-
-
-def test_script_interactive_asks_for_temperature():
-    # Temperature 85, Mode 1, default warranty, then Enter for the default part in all six slots
-    out = run(stdin="85\n1\n\n" + "\n" * 6)
-    assert out.returncode == 0, out.stderr
-    assert "Operating temperature in C" in out.stdout
-    assert "Operating condition: 85 C" in out.stdout
+def test_read_candidates_blank_cells_become_none(tmp_path):
+    f = tmp_path / "c.csv"
+    f.write_text("slot,name,test_temp_c,fit,unit_price_usd,notes\nGate driver,a,125,2.0,,ignored\n")
+    c = read_candidates(f)[0]
+    assert c["fit"] == 2.0 and c["unit_price_usd"] is None
+    assert "notes" not in c and set(c) <= set(CANDIDATE_COLUMNS)

@@ -42,16 +42,20 @@ operating condition.
 
 ## 2. What the simulator does
 
-TASER-EV is a Monte Carlo simulator built on our **component library**: the supplier test
-parameters we collected in `parameter_table.xlsx`. The user doesn't enter test data. They choose
-parts from the library and give the **operating temperature**. The simulator turns each part's
-accelerated-life test into reliability at that temperature, *with its uncertainty*.
+TASER-EV is a Monte Carlo simulator for a **vehicle maker choosing between suppliers**. The user
+enters candidate parts for any of the six component **slots** (ECU MCU, BMS AFE, digital isolator,
+temperature sensor, gate driver, current sensor), each from that supplier's reliability report,
+plus their own operating temperature and how long the part must work. The simulator turns every
+candidate's accelerated-life test into reliability at that one condition, *with its uncertainty*,
+and compares them (the user-facing simulator, below).
 
-The six component **slots** are ECU MCU, BMS AFE, digital isolator, temperature sensor, gate
-driver and current sensor. A configuration fills **1 to 6** of the slots, with one library part
-per slot.
+**Team decision (2026-10-31): the user sees only this simulator** (formerly "Mode 3"). Our
+**component library** (`parameter_table.xlsx`) is not offered to users; it is what we used to
+**build and test** the simulator (default Ea, A12; validation, Section 11). The library-based
+functions `evaluate()` and `compare()` (formerly Modes 1–2) stay in the code as the tested engine
+for validation; they are not a user option.
 
-### Mode 1: Evaluate (one configuration)
+### Internal engine 1: `evaluate()` (library parts; validation only)
 
 ```
 inputs:  operating temperature T_op (or a temperature profile)  +  1–6 slots, one library part each
@@ -62,7 +66,7 @@ system:         R_sys(t) band, system FIT/MTTF, B0.1 life, B0.1-to-warranty rati
                 estimated life in years, and P(meets warranty) = P(WR ≥ 1)
 ```
 
-### Mode 2: Compare (two configurations)
+### Internal engine 2: `compare()` (library parts; validation only)
 
 ```
 inputs:  T_op  +  configuration A (1–6 slots)  +  configuration B (1–6 slots)
@@ -73,7 +77,7 @@ differences B − A for every metric (absolute and %), with 95% CI
 P(B outlasts A) = P(B0.1,B > B0.1,A)   ← "is B really better, given how much each was tested?"
 ```
 
-### Mode 3: Supplier selection (the user's own candidates)
+### The simulator: supplier selection (`select()`, user-facing)
 
 The user is a vehicle maker choosing between suppliers. For any of the six slots they enter as many
 candidates as they like, each from that supplier's reliability report, and state their own
@@ -87,19 +91,25 @@ inputs:  operating temperature (or profile)  +  mission hours  +  target R(missi
            candidates, each with EITHER raw HTOL data (test temperature, hours, sample size, failures)
            OR a report summary (FIT or MTTF/MTBF, the temperature and confidence it refers to,
            failures), plus Ea if the report states one
-         + optional warranty exposure: fleet size, cost per failure, warranty hours
+         + optional (defaults in brackets): target [0.999], vehicles [1,000], repair cost per
+           failure [the part's unit price], warranty hours [the mission hours], each candidate's
+           unit price [Sheet2 price list], Ea [0.7 eV with A2 spread]
               │
               ▼
 per candidate:   AF, FIT, MTTF, B0.1, R(mission) (median + 95% CI), lower confidence bound on
-                 R(mission), P(R ≥ target), meets target (yes/no), P(best in its slot),
-                 warranty failures and cost (median + 95% CI)
+                 R(mission), P(R ≥ target), meets target (yes/no), P(best in its slot), unit price,
+                 warranty failures, warranty cost, purchase cost and total cost (95% CIs)
 combinations:    every pick of one candidate per entered slot, ranked by system FIT, with system
-                 R(mission), lower bound, P(meets target), P(best combination), warranty cost and
-                 extra cost vs the best combination (paired draws)
-output order:    1. reliability of every candidate at the user's condition (AF moves each one from its
-                    own test temperature, in either direction: AF > 1 below it, AF < 1 above it)
-                 2. requirement check and ranking within each slot
-                 3. ranked combinations, with the best one's system reliability stated first
+                 R(mission), lower bound, P(meets target), P(best combination), warranty failures,
+                 warranty cost, total cost and total cost vs the most reliable one (paired draws);
+                 plus the combination with the lowest total cost
+output order:    SUMMARY: plain sentences, the best candidate per slot (reliability, target met,
+                          chance it is best), the most reliable system, its warranty exposure and
+                          total cost, and the lowest-cost system if different
+                 KEY TABLE: one row per candidate: R(mission) with 95% CI, meets target, chance
+                          best in slot, warranty failures, total cost
+                 DETAILS (--details or on request; always saved to CSV): reliability, requirement
+                          check with prices and costs, all combinations
 note:            only operation above 150 °C (AEC-Q100 Grade 0) gets an informational note
 ```
 
@@ -109,11 +119,7 @@ sample size, failures or Ea, so it cannot put suppliers on a common basis. The *
 in the assignment is the vehicle maker's own: expected failures and cost over *their* warranty
 (E12), computed from each candidate's reliability.
 
-**Input scope.**
-- **Required:** operating temperature `[DECIDED]`. One temperature is a profile with a single bin,
-  and an optional multi-bin profile (the dynamic AF) uses the same code path.
-- **Has a default:** warranty period (A7), so the warranty ratio can be reported.
-- **`[LATER]`:** quantity per slot, user-chosen confidence level, and user-entered custom parts.
+**Input scope.** See Section 5. `[LATER]`: quantity per slot (A10) and the web app (M9).
 
 ## 3. Model / approach
 
@@ -266,26 +272,34 @@ aren't thermally activated.
 
 ## 5. Inputs and outputs
 
-### User inputs
+### User inputs (the simulator, `code/02_run_simulator.py`)
 
-| Input | Symbol | Default | Status |
+| Input | Required? | Default | Notes |
 |---|---|---|---|
-| Operating temperature, or a profile {(T_i, w_i)} | T_op | 55 °C, single bin | `[DECIDED]`, required |
-| Part chosen for each slot (1–6 slots) | | | `[DECIDED]`, required |
-| Mode 2: a second configuration | | | `[DECIDED]` |
-| Warranty period (operating hours) | t_w | 2,920 h for the whole system (A7) | `[DECIDED]`, one value for the system; varied in sensitivity (8d) |
-| Quantity per slot | q_j | 1 | `[LATER]` |
-| Custom user-entered part | | | `[LATER]` |
+| Operating temperature, or a profile {(T_i, w_i)} | **required** | | One temperature is a one-bin profile (E6) |
+| Mission hours: how long the part must work at that condition | **required** | | Sets R(mission) and the requirement (E17) |
+| Candidates: for each slot of interest, any number, each with a name and its report's test temperature | **required** (≥ 1) | | Skipped slots are left out of the system |
+| Each candidate's evidence: test hours + sample size + failures, **or** a FIT, **or** an MTTF/MTBF | **required** | failures 0 | Summary forms also take the temperature [test temperature] and confidence level [60%] they are stated at (A11, E15) |
+| Target reliability over the mission | optional | 0.999 | Confidence fixed at 95% (A13) |
+| Vehicles, for warranty exposure | optional | 1,000 | A14 |
+| Cost of one warranty repair | optional | the part's unit price | Parts-only lower bound (A14) |
+| Warranty period in operating hours | optional | the mission hours | |
+| Candidate unit price | optional | Sheet2 price list | A14 |
+| Activation energy Ea | optional | 0.7 eV with 0.5–0.9 spread | A12 |
 
-### Outputs (each as median and 95% CI unless noted)
+### Outputs
+
+Summary first, then a key table, then details (Section 2). Every number is a median with a 95%
+CI unless it is a probability, a bound or a yes/no.
 
 | Level | Output | Equation |
 |---|---|---|
-| Component | AF at T_op (or effective AF over the profile), equivalent device-hours D, FIT, MTTF (hours and years), R(t_w) | E2–E7 |
-| Component, supplier-comparable | FIT at the 60% bound (a single number, same convention as datasheets) | E4 |
-| System | λ_sys, system FIT, system MTTF, R_sys(t_w), R_sys(t) band, B0.1 life, warranty ratio WR | E8–E10 |
-| System decision | P(WR ≥ 1): probability of meeting the warranty target | E14 |
-| Mode 2 | All of the above for A and B; B − A (absolute and %); P(B outlasts A) | E11–E13 |
+| Candidate | AF to the user's condition, FIT, MTTF, B0.1, R(mission) | E2–E7, E9 |
+| Candidate, requirement | 95% lower bound on R(mission), P(R ≥ target), meets target | E17 |
+| Candidate, comparison | P(best in slot), rank in slot | E16 |
+| Candidate, money | unit price, warranty failures, warranty cost, purchase cost, total cost | E12, A14 |
+| System (each combination) | system FIT, R(mission), B0.1, lower bound, P(meets target), P(best combination) | E8, E9, E16, E17 |
+| System, money | warranty failures, warranty cost, total cost, total cost vs the most reliable system; lowest-cost system | E11, E12, A14 |
 
 ## 6. Assumptions
 
@@ -305,6 +319,7 @@ Each assumption has an ID so code comments and the report can cite it.
 | A10 | **One part per slot** (quantity 1) for now. | It keeps comparisons clean. Quantities scale λ_sys linearly (E8), so adding them later is easy. | `[DEFAULT]` |
 | A11 | **Mode 3 report summaries:** a supplier's FIT or MTTF is the chi-square bound (E4) at its stated temperature and confidence level, from its stated failures. Defaults when the report doesn't say: confidence 60%, failures 0, temperature = test temperature. | This is how suppliers compute published FIT (11b reproduces TI's values this way), so the summary can be turned back into test evidence (E15) and gets the same uncertainty treatment as raw data. | `[DEFAULT]` |
 | A13 | **Mode 3 required confidence is fixed at 95%.** A candidate meets the target only if the 95% lower confidence bound on R(mission) is at least the target (E17). | Team decision (2026-10-31): one standard for every comparison, matching the 95% intervals used everywhere else. | `[DECIDED]` |
+| A14 | **Cost basis for warranty exposure:** exposure is reported per 1,000 vehicles unless the user gives a fleet size. A candidate's unit price is the user's, else the Sheet2 price of a matching part number, else the Sheet2 average for its slot. Cost per warranty failure is the user's repair cost, else the part's unit price. Total cost = purchase (vehicles × unit price) + expected warranty cost. | The user may not know fleet size or repair cost. Per-1,000 figures are readable without them, and Sheet2 prices are sourced (distributor links). Parts-only cost is a **lower bound**: real repairs add labour and often a whole module, so it understates warranty cost. | `[DECIDED]` (team, 2026-10-31) |
 | A12 | **Mode 3 activation energy:** a value stated in the report is used as given (fixed). Otherwise Ea is drawn as in A2, centred on the library ("training data") median Ea, which is 0.7 eV because every library report assumes 0.7. | Uses the supplier's own physics when known, and the evidence in our dataset when not. | `[DEFAULT]` |
 
 ## 7. Equations
@@ -450,14 +465,16 @@ All of these come from running the simulator.
 
 ## 10. Financial model
 
-All unit costs need citations `[TODO]`.
+Unit prices come from Sheet2 of `parameter_table.xlsx` (distributor prices with links), cleaned
+into `data/prices.csv` (A14).
 
-**10a. Warranty exposure, before vs after** (a natural Mode 2 output):
-- Before = configuration A, after = configuration B.
-- Cost = N · F_sys(t_w) · C_fail (E12), computed per draw, so the 95% CI comes straight from the
-  simulation.
-- Benefit = cost(A) − cost(B), minus any change in parts cost per vehicle × N.
-- P(benefit > 0) is reported alongside.
+**10a. Warranty exposure, before vs after** (built into the simulator, A14):
+- For every candidate and combination: warranty failures N · F(t_w), warranty cost
+  N · F(t_w) · C_fail (E12) and total cost = N · unit price + warranty cost, per draw, so 95% CIs
+  come straight from the simulation. N defaults to 1,000 vehicles; C_fail defaults to the unit
+  price (parts-only lower bound).
+- Before vs after = any two combinations; the simulator reports each one's total cost vs the most
+  reliable combination (paired draws) and names the lowest-cost combination.
 
 **10b. Engineering evaluation time** (the charter goal is a 20% reduction):
 - Hours per component evaluation × evaluations per year × $74.66/h (Federal Register, 2025).
@@ -635,7 +652,8 @@ code/
 data/reference/
   published_fit.csv, fit_verification.csv   (published values: validation only, never model input)
 data/examples/
-  candidates_example.csv   Mode 3 input template, filled with real library data
+  candidates_example.csv   simulator input template, filled with real library data
+data/prices.csv            Sheet2 unit prices and slot averages (A14), built by 01_clean_data.py
 tests/
   test_library.py, test_equations.py (E1–E6, draws), test_reliability.py (E7–E10, E14),
   test_simulator.py, test_validation.py (11b, 11e), test_interface.py (run script),
@@ -662,6 +680,7 @@ Each milestone ends with its tests passing and this file updated.
 | M5 ✅ | Verification | All 11a tests pass (77 tests) |
 | M6 ✅ | Real-result validation, and a runnable simulator | 11b (published FIT/MTBF/AF) and 11e (coverage, calibration) done, 11c–11d dropped; `code/02_run_simulator.py` asks for the operating temperature and prints all outputs; 94 tests pass |
 | M6b ✅ | Mode 3: supplier selection | `select()` for any number of user candidates per slot (raw HTOL data or report FIT/MTTF), requirement check, P(best), ranked combinations and warranty exposure; in the run script; 19 tests in `tests/test_candidates.py` (113 in total) |
+| M6c ✅ | One user-facing simulator | `code/02_run_simulator.py` runs supplier selection only (no library picking), required vs optional inputs, summary first, warranty exposure per 1,000 vehicles with Sheet2 prices; 117 tests |
 | M7 | Results + financial | Section 9 and 10 tables and figures in `results/` |
 | M8 | Reports | Preliminary Results and Financial Impacts .docx in `reports/` |
 | M9 | User interface `[LATER]` | Front end over `evaluate()` / `compare()` |
@@ -727,3 +746,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-10-31 | Team decision (A13): Mode 3's required confidence is fixed at 95% and is no longer an input (removed from the prompt and `--confidence`). Explained why the MCUs fail the 200 °C example: at 200 °C, C2000 would need ~40× and RH850 ~99× more test device-hours to show R(1,000 h) ≥ 0.999 with 95% confidence; at 55 °C both pass. 113 tests pass. |
 | 2026-10-31 | Mode 3 output now leads with reliability at the user's condition (new `reliability_table()`: AF, R(mission) with 95% CI, FIT, MTTF, B0.1 per candidate), for operating temperatures below or above each test temperature alike. Removed the "extrapolated upward" warning (AF < 1 above T_test is normal Arrhenius use); the > 150 °C remark is now a note. Lower bounds shown to 6 decimals so borderline pass/fail is visible. 113 tests pass. |
 | 2026-10-31 | The simulator is for users' own inputs: result files from our test and validation runs on the original data (validation tables/figures, demo runs) are not committed; `code/03_validation.py` regenerates them. Mode 3 printed tables now show MTTF and B0.1 with 95% CIs and warranty failures next to cost. 114 tests pass. |
+| 2026-10-31 | Team decisions: (1) users see only the supplier-selection simulator; the library is used to build and test it, and `evaluate()`/`compare()` remain only as the validation engine (Modes 1–2 removed from the run script); (2) warranty exposure without inputs the user may not know (A14): per 1,000 vehicles, unit prices from Sheet2 (new `data/prices.csv`, 30 parts + 6 slot averages; the current-sensor average has no listed rows), cost per failure = unit price (parts-only lower bound) unless a repair cost is given, total cost = purchase + warranty, lowest-cost combination reported. Run script rewritten: only temperature, mission hours and candidates are required; output is SUMMARY → key table → details on request. Arguments now `--temp --hours --candidates [--target --fleet --repair-cost --warranty-hours --details]`. 117 tests pass. |

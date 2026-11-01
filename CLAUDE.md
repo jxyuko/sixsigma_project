@@ -10,23 +10,22 @@ update ROADMAP.md and add a line to its Changelog. Cite A#/E# numbers in code co
 
 ## What we are building
 
-A Monte Carlo accelerated-life reliability simulator for six EV electronic component slots: ECU
-MCU, BMS AFE, digital isolator, temperature sensor, gate driver and current sensor. The library
-of supplier HTOL test data comes from `parameter_table.xlsx`. The user gives an operating
-temperature (or a profile) and fills 1–6 slots.
-- **Mode 1, `evaluate()`:** component and system FIT, MTTF, R(t), B0.1, warranty ratio and
-  P(meets warranty), with 95% CIs.
-- **Mode 2, `compare()`:** two configurations, their differences and P(B outlasts A).
-- **Mode 3, `select()`:** the user's own candidate suppliers (any number per slot, from raw
-  HTOL data or a report's FIT/MTTF) at the user's condition, against a reliability target
-  (required confidence fixed at 95%), with P(best), ranked combinations and warranty exposure.
+A Monte Carlo accelerated-life reliability simulator for a vehicle maker choosing between
+suppliers, for six EV electronic component slots: ECU MCU, BMS AFE, digital isolator, temperature
+sensor, gate driver and current sensor.
+- **The simulator, `select()`** (the only thing users see): the user enters candidates for any
+  slots (from each report's raw HTOL data or its FIT/MTTF), their operating temperature and mission
+  hours. Output: summary first, then per-candidate and per-combination reliability with 95% CIs,
+  the target check (confidence fixed at 95%), P(best), and warranty exposure and total cost per
+  1,000 vehicles with Sheet2 prices (A14).
+- **Library** (`parameter_table.xlsx` → `data/components.csv`): used to build and test the
+  simulator, not offered to users. `evaluate()` / `compare()` are the internal validation engine.
 
 The simulator is validated against the published FIT, MTBF and AF in the parameter table (used only
 for validation, never as inputs) and a known-truth coverage study (ROADMAP Section 11).
 
-Run it: `.venv/Scripts/python code/02_run_simulator.py` asks for the operating temperature and parts
-(or `--temp 55`, `--compare "ECU MCU=R7F7016903AFP-C"`, or Mode 3 with
-`--temp 200 --candidates data/examples/candidates_example.csv --fleet 100000 --cost 1000`).
+Run it: `.venv/Scripts/python code/02_run_simulator.py` asks for everything, or
+`--temp 200 --hours 1000 --candidates data/examples/candidates_example.csv [--details]`.
 
 Code and results come first. A user interface comes later and must call the same functions.
 

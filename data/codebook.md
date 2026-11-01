@@ -108,7 +108,7 @@ the manufacturer used a larger or different dataset than the one we transcribed.
 **Dropped raw columns:** `Mission time (hours)` (its unit is unclear, and the simulator takes the
 warranty from A7 instead), plus empty helper rows and duplicate rows.
 
-## `data/examples/candidates_example.csv`: Mode 3 input template
+## `data/examples/candidates_example.csv`: simulator input template
 
 Input for supplier selection (`code/02_run_simulator.py --candidates <file>`). One row per candidate.
 The example is filled with **real** data from the parameter table (no invented values), including
@@ -125,4 +125,22 @@ one candidate entered in report-summary form (UCC21750's published 0.2 FIT at 55
 | `ref_temp_c` | summary form, optional | °C | Temperature the FIT/MTTF refers to (default `test_temp_c`) |
 | `conf_level` | summary form, optional | fraction | Confidence level of the FIT/MTTF (default 0.60, A11) |
 | `ea_ev` | optional | eV | Activation energy stated in the report (default: library median, A12) |
+| `unit_price_usd` | optional | USD | Purchase price (default: Sheet2 price for the part, else the slot average, A14) |
 | `source` | no | | Where the values come from (not read by the code) |
+
+## `data/prices.csv`: unit prices (Sheet2), used for cost
+
+Built by `code/01_clean_data.py` from Sheet2 of `parameter_table.xlsx` (A14). Used by the simulator
+for purchase cost and, by default, cost per warranty failure.
+
+| Column | Type | Unit | Meaning |
+|---|---|---|---|
+| `slot` | category | | Component slot (Sheet2's "BMS monitor" → BMS AFE, "ECU / MCU" → ECU MCU) |
+| `kind` | text | | `part` (one priced product) or `slot average` (the team's stated average for the slot) |
+| `supplier`, `part` | text | | Manufacturer and orderable part number (blank for averages) |
+| `unit_price_usd` | number | USD | Unit price |
+| `retailer` | text | | Distributor the price came from |
+| `source` | text | | Product price link; for averages, whether the stated average matches the listed rows |
+
+30 priced parts (6 per slot, no current sensors) and 6 slot averages. The current-sensor average
+(17.35 USD over 6 products) is stated in Sheet2 without its individual rows.

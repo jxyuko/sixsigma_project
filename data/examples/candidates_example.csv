@@ -1,8 +1,8 @@
-slot,name,supplier,test_temp_c,test_hours,sample_size,failures,fit,mttf_hours,ref_temp_c,conf_level,ea_ev,source
-Gate driver,UCC21750QDWRQ1,Texas Instruments,125,1000,87285,0,,,,,,parameter_table.xlsx (raw HTOL data)
-Gate driver,ADuM4135,Analog Devices,125,1000,31664,0,,,,,,parameter_table.xlsx (raw HTOL data)
-Gate driver,UCC21750 (report FIT form),Texas Instruments,125,,,0,0.2,,55,0.6,0.7,parameter_table.xlsx (published FIT 0.2 at 55 C and 60%)
-Digital isolator,ISO7741QDWRQ1,Texas Instruments,125,1000,87285,0,,,,,,parameter_table.xlsx (raw HTOL data)
-Digital isolator,ADuM141E,Analog Devices,125,1000,58148,1,,,,,,parameter_table.xlsx (raw HTOL data)
-ECU MCU,F280049CPZQR,Texas Instruments,125,1000,1900,0,,,,,,parameter_table.xlsx (raw HTOL data)
-ECU MCU,R7F7016903AFP-C,Renesas Electronics,150,1000,231,0,,,,,,parameter_table.xlsx (raw HTOL data)
+slot,name,supplier,test_temp_c,test_hours,sample_size,failures,fit,mttf_hours,ref_temp_c,conf_level,ea_ev,unit_price_usd,source
+Gate driver,UCC21750QDWRQ1,Texas Instruments,125,1000.0,87285.0,0,,,,,,,parameter_table.xlsx (raw HTOL data)
+Gate driver,ADuM4135,Analog Devices,125,1000.0,31664.0,0,,,,,,,parameter_table.xlsx (raw HTOL data)
+Gate driver,UCC21750 (report FIT form),Texas Instruments,125,,,0,0.2,,55.0,0.6,0.7,8.03,parameter_table.xlsx (published FIT 0.2 at 55 C and 60%); price Sheet2 UCC21750QDWRQ1
+Digital isolator,ISO7741QDWRQ1,Texas Instruments,125,1000.0,87285.0,0,,,,,,,parameter_table.xlsx (raw HTOL data)
+Digital isolator,ADuM141E,Analog Devices,125,1000.0,58148.0,1,,,,,,,parameter_table.xlsx (raw HTOL data)
+ECU MCU,F280049CPZQR,Texas Instruments,125,1000.0,1900.0,0,,,,,,,parameter_table.xlsx (raw HTOL data)
+ECU MCU,R7F7016903AFP-C,Renesas Electronics,150,1000.0,231.0,0,,,,,,,parameter_table.xlsx (raw HTOL data)

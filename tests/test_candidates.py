@@ -85,19 +85,50 @@ def test_meets_target_consistent_with_probability():
         assert r["meets_target_at_confidence"] == (r["p_meets_target"] >= 0.95)
 
 
-# --- E12: warranty exposure --------------------------------------------------------------------
+# --- E12 / A14: warranty exposure and cost ---------------------------------------------------------
 
 def test_warranty_exposure_scales_with_fleet_and_cost():
-    a = select([raw("a", 1000)], 55, 1000, fleet_size=1000, cost_per_failure=1.0)
-    b = select([raw("a", 1000)], 55, 1000, fleet_size=2000, cost_per_failure=500.0)
+    a = select([raw("a", 1000)], 55, 1000, fleet_size=1000, repair_cost=1.0)
+    b = select([raw("a", 1000)], 55, 1000, fleet_size=2000, repair_cost=500.0)
     ra, rb = row(a, "a"), row(b, "a")
     assert rb["warranty_failures_median"] == pytest.approx(2 * ra["warranty_failures_median"])
     assert rb["warranty_cost_median"] == pytest.approx(500 * rb["warranty_failures_median"])
 
 
-def test_no_exposure_without_fleet():
-    sel = select([raw("a", 1000)], 55, 1000)
-    assert "warranty_cost_median" not in sel.candidates.columns
+def test_default_exposure_is_per_1000_vehicles_parts_only():
+    # A14: no fleet or repair cost given -> 1,000 vehicles, cost per failure = the unit price
+    sel = select([raw("UCC21750QDWRQ1", 1000)], 55, 1000)
+    r = row(sel, "UCC21750QDWRQ1")
+    assert sel.settings["fleet_size"] == 1000
+    assert r["unit_price_usd"] == 8.03 and r["price_source"] == "Sheet2 price of UCC21750QDWRQ1"
+    assert r["cost_per_failure"] == 8.03 and r["cost_basis"] == "parts-only (unit price)"
+    assert r["purchase_cost"] == pytest.approx(8030)
+    assert r["warranty_cost_median"] == pytest.approx(8.03 * r["warranty_failures_median"])
+
+
+def test_total_cost_is_purchase_plus_warranty_per_draw():
+    sel = select([raw("a", 1000, unit_price_usd=10.0)], 55, 1000, fleet_size=100, repair_cost=1000.0)
+    r = row(sel, "a")
+    assert r["total_cost_median"] == pytest.approx(r["purchase_cost"] + r["warranty_cost_median"])
+    assert r["purchase_cost"] == 1000.0
+
+
+def test_prices_from_sheet2():
+    from functions.candidates import price_for
+    assert price_for("Gate driver", "ADuM4135") == (9.33, "Sheet2 price of ADUM4135WBRWZ")     # prefix match
+    price, source = price_for("ECU MCU", "My MCU")                       # not in Sheet2 -> slot average
+    assert price == pytest.approx(15.853333, rel=1e-6) and source == "Sheet2 average for ECU MCU"
+    assert price_for("Current sensor", "Any sensor")[0] == 17.35          # stated average, no rows listed
+    assert price_for("Gate driver", "x", unit_price=4.5) == (4.5, "entered by user")
+    with pytest.raises(ValueError):
+        price_for("Gate driver", "x", unit_price=-1)
+
+
+def test_cheapest_combination_found():
+    # a is more reliable but much more expensive than b; the cheapest total cost is b
+    sel = select([raw("a", 100_000, unit_price_usd=50.0), raw("b", 50_000, unit_price_usd=1.0)], 55, 1000)
+    assert sel.combinations.iloc[0]["combination"] == "a"
+    assert sel.cheapest["combination"] == "b"
 
 
 # --- Combinations (E8, empty slots left out) -------------------------------------------------------
@@ -173,43 +204,65 @@ def test_example_file_reads_and_runs():
     assert set(sel.candidates["slot"]) == {"ECU MCU", "Digital isolator", "Gate driver"}
 
 
-def test_script_mode3_from_file():
-    out = subprocess.run([sys.executable, str(ROOT / "code" / "02_run_simulator.py"), "--temp", "200",
-                          "--candidates", str(EXAMPLE), "--fleet", "100000", "--cost", "1000", "--draws", "500"],
+SCRIPT = ROOT / "code" / "02_run_simulator.py"
+
+
+def test_script_from_file_summary_first():
+    out = subprocess.run([sys.executable, str(SCRIPT), "--temp", "200", "--hours", "1000",
+                          "--candidates", str(EXAMPLE), "--draws", "500"],
                          capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert out.returncode == 0, out.stderr
-    assert "Best combination:" in out.stdout and "System R(1,000 h)" in out.stdout
-    assert "1. Reliability of each candidate at 200 C" in out.stdout
+    assert out.stdout.index("SUMMARY") < out.stdout.index("All candidates")
+    assert "Most reliable system:" in out.stdout and "Best candidate in each slot:" in out.stdout
+    assert "Details 1" not in out.stdout                        # details only on request
 
 
-def test_script_mode3_interactive():
-    # 150 C, Mode 3, mission 1000, default target, skip fleet (confidence is fixed at 95%); then 2 gate-driver
-    # candidates: one from the library (part 1) and one typed in as raw data; all other slots 0
-    answers = ["150", "3", "1000", "", "",
-               "0", "0", "0", "0",                       # ECU MCU, BMS AFE, isolator, temp sensor
-               "2",                                      # gate driver: 2 candidates
-               "1", "1",                                 # candidate 1: library part 1
-               "2", "Supplier X", "150", "1000", "500", "0", "",   # candidate 2: raw data, no Ea
-               "0"]                                      # current sensor
-    out = subprocess.run([sys.executable, str(ROOT / "code" / "02_run_simulator.py"), "--draws", "500"],
-                         input="\n".join(answers) + "\n", capture_output=True, text=True, cwd=ROOT, timeout=120)
+def test_script_details_flag():
+    out = subprocess.run([sys.executable, str(SCRIPT), "--temp", "55", "--hours", "1000",
+                          "--candidates", str(EXAMPLE), "--details", "--draws", "500"],
+                         capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert out.returncode == 0, out.stderr
-    assert "Supplier X" in out.stdout and "Best combination:" in out.stdout
+    assert "Details 1" in out.stdout and "Details 3" in out.stdout
+
+
+def test_script_requires_temperature_hours_and_file_together():
+    out = subprocess.run([sys.executable, str(SCRIPT), "--temp", "55", "--candidates", str(EXAMPLE)],
+                         capture_output=True, text=True, cwd=ROOT, timeout=120)
+    assert out.returncode != 0 and "--hours" in out.stderr
+
+
+def test_script_interactive():
+    # Required: temperature, hours. Optional settings: Enter. Then 2 gate-driver candidates:
+    # one with test results, one with a FIT value; all other slots 0; no details.
+    answers = ["150", "1000",
+               "", "", "", "",                                   # target, fleet, repair cost, warranty
+               "0", "0", "0", "0",                               # ECU MCU, BMS AFE, isolator, temp sensor
+               "2",                                              # gate driver: 2 candidates
+               "Supplier X", "150", "1", "1000", "500", "0", "", "",          # test results
+               "Supplier Y", "125", "2", "0.5", "0", "55", "0.6", "", "6",    # FIT 0.5 at 55 C, $6
+               "0",                                              # current sensor
+               ""]                                               # details: no
+    out = subprocess.run([sys.executable, str(SCRIPT), "--draws", "500"], input="\n".join(answers) + "\n",
+                         capture_output=True, text=True, cwd=ROOT, timeout=120)
+    assert out.returncode == 0, out.stderr
+    assert "Supplier X" in out.stdout and "Supplier Y" in out.stdout and "Most reliable system:" in out.stdout
 
 
 def test_printed_tables_show_every_output():
-    # Every Mode 3 output appears in the printed tables, with its 95% CI where it has one
-    from functions.interface import candidate_table, combination_table, reliability_table
-    sel = select([raw("a", 1000), raw("b", 5000)], 55, 1000, fleet_size=1000, cost_per_failure=100.0)
+    # Every output appears in the printed tables, with its 95% CI where it has one
+    from functions.interface import candidate_table, combination_table, key_table, reliability_table, summary_text
+    sel = select([raw("a", 1000), raw("b", 5000)], 55, 1000)
     rel = reliability_table(sel)
-    for col in ("FIT", "MTTF (h)", "B0.1 (h)", "95% CI"):
+    for col in ("FIT", "MTTF (h)", "B0.1 (h)", "R(1,000 h)", "AF to your condition"):
         assert col in rel.columns
     assert "(" in rel.loc[0, "MTTF (h)"] and "(" in rel.loc[0, "B0.1 (h)"]          # CI shown
     cand = candidate_table(sel)
-    for col in ("R lower bound (95%)", "P(R >= target)", "Meets target", "P(best in slot)",
-                "Warranty failures", "Warranty cost"):
+    for col in ("R lower bound (95%)", "P(R >= target)", "Meets target", "P(best in slot)", "Unit price",
+                "Warranty failures", "Warranty cost", "Purchase cost", "Total cost"):
         assert col in cand.columns
     combo = combination_table(sel)
     for col in ("System FIT", "System R(mission)", "System B0.1 (h)", "Warranty failures", "Warranty cost",
-                "Extra cost vs #1", "P(best)"):
+                "Total cost", "Total cost vs #1", "P(best)"):
         assert col in combo.columns
+    assert "Meets target" in key_table(sel).columns
+    assert "Most reliable system: b" in summary_text(sel)

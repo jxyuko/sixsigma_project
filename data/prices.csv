@@ -1,0 +1,37 @@
+slot,kind,supplier,part,unit_price_usd,retailer,source
+ECU MCU,part,Infineon,TC233LP32F200NACKXUMA1,20.42,Mouser,https://www.mouser.com/ProductDetail/Infineon-Technologies/TC233LP32F200NACKXUMA1?qs=QIiuLP2W41D8UVmfUbZ85A%3D%3D
+ECU MCU,part,Microchip,dsPIC33CK256MP508-E/PT,2.88,Mouser,https://www.mouser.com/en/ProductDetail/Microchip-Technology/dsPIC33CK256MP508-E-PT?qs=y6ZabgHbY%252By9SI5TpS8Uaw%3D%3D
+ECU MCU,part,NXP,S32K344NHT1MPBST,21.28,DigiKey,https://www.digikey.com/en/products/detail/nxp-usa-inc/S32K344NHT1MPBST/18711540
+ECU MCU,part,Renesas,R7F7016843AFP-C#BA1,16.27,Mouser,https://www.mouser.com/en/ProductDetail/Renesas-Electronics/R7F7016843AFP-CBA1?qs=W%2FMpXkg%252BdQ60QLQUjBCWvw%3D%3D
+ECU MCU,part,STMicroelectronics,SPC58EC80E7QMC1X,26.06,Mouser,https://www.mouser.com/ProductDetail/STMicroelectronics/SPC58EC80E7QMC1X?qs=Znm5pLBrcAIfYwGJL6VcdQ%3D%3D
+ECU MCU,part,Texas Instruments,F2800157QPMQ1,8.21,DigiKey,https://www.digikey.com/en/products/detail/texas-instruments/F2800157QPMQ1/22077484
+ECU MCU,slot average,,,15.85333333,,Sheet2 stated average over 6 products; matches the listed rows
+BMS AFE,part,Analog Devices,LTC6811HG-1#3ZZTRPBF,18.74,Mouser,https://www.mouser.com/en/c/semiconductors/integrated-circuits-ics/power-management-ics/?series=LTC6811
+BMS AFE,part,Infineon,TLE9012DQUXUMA1,7.09,Mouser,https://www.mouser.com/en/c/semiconductors/integrated-circuits-ics/power-management-ics/battery-management/?m=Infineon
+BMS AFE,part,NXP,MC33771CTA1AE,14.37,Mouser,https://www.mouser.com/en/c/?series=MC33771C
+BMS AFE,part,Renesas,ISL78714ANZ-T,17.64,Mouser,https://www.mouser.com/en/ProductDetail/Renesas-Intersil/ISL78714ANZ-T?qs=B6kkDfuK7%2FAs3WZb5fEINg%3D%3D
+BMS AFE,part,STMicroelectronics,L9963E-TR,11.99,Mouser,https://www.mouser.com/en/c/semiconductors/power-management-ics/?series=L9963E
+BMS AFE,part,Texas Instruments,BQ79656PAPRQ1,25.82,Mouser,https://www.mouser.com/en/ProductDetail/Texas-Instruments/BQ79656PAPRQ1?qs=ljCeji4nMDlctH1rPHwGgA%3D%3D
+BMS AFE,slot average,,,15.94166667,,Sheet2 stated average over 6 products; matches the listed rows
+Digital isolator,part,Analog Devices,ADUM141E0BRQZ-RL7,4.63,Mouser,https://www.mouser.com/c/semiconductors/interface-ics/digital-isolators/?data+rate=150+Mb%2Fs&series=ADUM141ES
+Digital isolator,part,Infineon,4DIR1400HAXUMA1,2.3,Mouser,https://www.mouser.com/ProductDetail/Infineon-Technologies/4DIR1400HAXUMA1?qs=1Kr7Jg1SGW9eZL%2FIlGTkuQ%3D%3D
+Digital isolator,part,NOVOSENSE,NSI8241W0-Q1SWR,2.56,DigiKey,https://www.digikey.com/en/products/detail/novosense/NSI8241W0-Q1SWR/22188674
+Digital isolator,part,Skyworks,SI8641BB-B-IS1,3.78,Partstack,https://partstack.com/p/skyworks-solutions/si8641bb-b-is1/4037595040
+Digital isolator,part,Texas Instruments,ISO7741QDWRQ1,3.83,Mouser,https://www.mouser.com/ProductDetail/Texas-Instruments/ISO7741QDWRQ1?qs=34RfhUjJmKdiyQ9qp4sakQ%3D%3D
+Digital isolator,part,Toshiba,"DCM341L01(AS,EL)",3.43,Mouser,https://www.mouser.com/en/ProductDetail/Toshiba/DCM341L01ASEL?qs=efUn273yAhdtvkdjAgSXvw%3D%3D
+Digital isolator,slot average,,,3.42,,Sheet2 stated average over 6 products; matches the listed rows
+Temperature sensor,part,Analog Devices,MAX31730ATC+T,3.04,Mouser,https://www.analog.com/en/products/max31730.html
+Temperature sensor,part,Microchip,MCP9983T-AE/E3,0.97,Mouser,https://www.mouser.com/ProductDetail/Microchip-Technology/MCP9983T-AE-E3?qs=HoCaDK9Nz5dj8YWo%2FOYBmQ%3D%3D
+Temperature sensor,part,NXP,"SA56004ED,118",1.19,Newark,https://www.newark.com/nxp/sa56004ed-118/temperature-sensor-1deg-c-soic/dp/61AC1839
+Temperature sensor,part,STMicroelectronics,STTS22HTR,1.81,Mouser,https://www.st.com/en/mems-and-sensors/stts22h.html
+Temperature sensor,part,Texas Instruments,TMP4719QDGSRQ1,1.29,Distributor index,https://www.ti.com/product/TMP4719-Q1
+Temperature sensor,part,onsemi,NCT214MT3R2G,2.2,DigiKey,https://www.digikey.com/en/products/detail/onsemi/NCT214MT3R2G/2626642
+Temperature sensor,slot average,,,1.75,,Sheet2 stated average over 6 products; matches the listed rows
+Gate driver,part,Analog Devices,ADUM4135WBRWZ,9.33,DigiKey,https://www.digikey.com/en/products/detail/analog-devices-inc/ADUM4135WBRWZ/16651498
+Gate driver,part,Infineon,1EDI3033ASXUMA1,5.14,Mouser,https://www.mouser.com/en/c/?package+%2F+case=DSO-20
+Gate driver,part,ROHM,BM6112FV-CE2,8.4,Mouser,https://www.mouser.com/ProductDetail/ROHM-Semiconductor/BM6112FV-CE2?qs=XAiT9M5g4x9KQSegM4Q3wQ%3D%3D
+Gate driver,part,STMicroelectronics,STGAP2SICS,3.44,Mouser,https://www.mouser.com/en/ProductDetail/STMicroelectronics/STGAP2SICS?qs=DPoM0jnrROUXyVL698kG%252BA%3D%3D
+Gate driver,part,Texas Instruments,UCC21750QDWRQ1,8.03,Mouser,https://www.mouser.com/en/ProductDetail/Texas-Instruments/UCC21750QDWRQ1?qs=BJlw7L4Cy7%2FADnnEzoLd5w%3D%3D
+Gate driver,part,onsemi,NCV57001DWR2G,5.26,Mouser,https://www.mouser.com/en/ProductDetail/onsemi/NCV57001DWR2G?qs=vLWxofP3U2wQlHAl1TxBRg%3D%3D
+Gate driver,slot average,,,6.6,,Sheet2 stated average over 6 products; matches the listed rows
+Current sensor,slot average,,,17.35,,Sheet2 stated average over 6 products; individual rows not listed in Sheet2
