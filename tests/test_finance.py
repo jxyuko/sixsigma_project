@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from functions.finance import break_even_repair_cost, combination_costs, compare_costs, qi_cost
+from functions.finance import break_even_replacement_cost, combination_costs, compare_costs, qi_cost
 
 
 def fake_selection(lams, prices, costs=None, fleet=1000, t_w=1000.0):
@@ -59,12 +59,12 @@ def test_break_even_known_answer():
     # Premium 10 per 1,000 vehicles, 0.5 failures avoided per draw -> C* = 20
     before = {"purchase_cost": np.full(4, 100.0), "failures": np.full(4, 1.0)}
     after = {"purchase_cost": np.full(4, 110.0), "failures": np.full(4, 0.5)}
-    be = break_even_repair_cost(before, after)
+    be = break_even_replacement_cost(before, after)
     assert be["estimate"] == pytest.approx(20.0) and be["share_draws_avoiding_failures"] == 1.0
 
 
 def test_break_even_when_change_is_cheaper():
     before = {"purchase_cost": np.full(3, 100.0), "failures": np.full(3, 1.0)}
     after = {"purchase_cost": np.full(3, 90.0), "failures": np.full(3, 0.5)}
-    be = break_even_repair_cost(before, after)
-    assert be["pays_off_at_any_repair_cost"] and be["estimate"] == 0.0 and be["premium"] == -10.0
+    be = break_even_replacement_cost(before, after)
+    assert be["pays_off_at_any_replacement_cost"] and be["estimate"] == 0.0 and be["premium"] == -10.0

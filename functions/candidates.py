@@ -162,11 +162,16 @@ def p_best(lam_matrix):
 # select(): the simulator. Every candidate is put on the user's condition by the same equations as the
 # internal engine (E2-E7, E6 for profiles), with a shared Ea draw for candidates without a stated Ea (A2, A12) and
 # common random numbers. Requirement: R(mission_hours) >= target_r with 95% confidence (A13).
-# Warranty exposure (E12, A14) for fleet_size vehicles (default 1,000) over warranty_hours (default
-# the mission). Cost per warranty failure = repair_cost if given, else each part's unit price
-# (a parts-only lower bound). Total cost = purchase + expected warranty cost.
+# Warranty exposure (E12, A14) for fleet_size vehicles N (default 1,000) over warranty_hours t_w (default
+# the mission), per Monte Carlo draw:
+#   expected warranty failures of part i   = N * (1 - exp(-lambda_i * t_w))
+#   warranty cost of part i                = expected failures of part i * cost per failure
+#   cost per failure                       = replacement_cost if given, else the part's unit price
+#                                            (each warranty failure replaces the failed part)
+#   total cost                             = N * unit price + warranty cost
+# Summed over the parts of a combination; the 5,000 draws give the median and 95% CI.
 def select(candidates, profile, mission_hours, target_r=DEFAULT_TARGET_R,
-           warranty_hours=None, fleet_size=DEFAULT_FLEET, repair_cost=None,
+           warranty_hours=None, fleet_size=DEFAULT_FLEET, replacement_cost=None,
            n_draws=N_DRAWS, seed=SEED, prior="uniform", cl=0.95, library=None, prices=None, top=10,
            ea_mode="shared"):
     # ea_mode (8d sensitivity) for candidates without a stated Ea: "shared" = one draw per run for
@@ -179,8 +184,8 @@ def select(candidates, profile, mission_hours, target_r=DEFAULT_TARGET_R,
         raise ValueError("target reliability must be between 0 and 1")
     if fleet_size is None or fleet_size <= 0:
         raise ValueError("fleet size must be positive")
-    if repair_cost is not None and repair_cost < 0:
-        raise ValueError("repair cost can't be negative")
+    if replacement_cost is not None and replacement_cost < 0:
+        raise ValueError("replacement cost can't be negative")
     confidence = CONFIDENCE
     cand = clean_candidates(candidates, library, prices)
     t_w = mission_hours if warranty_hours is None else warranty_hours
@@ -227,9 +232,9 @@ def select(candidates, profile, mission_hours, target_r=DEFAULT_TARGET_R,
         row["r_mission_lower_bound"] = float(np.quantile(r_mission, 1 - confidence))
         row["p_meets_target"] = float(np.mean(r_mission >= target_r))
         row["meets_target_at_confidence"] = row["r_mission_lower_bound"] >= target_r
-        cost = c["unit_price_usd"] if repair_cost is None else repair_cost
+        cost = c["unit_price_usd"] if replacement_cost is None else replacement_cost
         row["cost_per_failure"] = cost
-        row["cost_basis"] = "parts-only (unit price)" if repair_cost is None else "user repair cost"
+        row["cost_basis"] = "replacement at unit price" if replacement_cost is None else "user replacement cost"
         fails = fleet_size * unreliability(lam[c["name"]], t_w)                  # E12
         row.update(cost_columns(fails, fails * cost, fleet_size * c["unit_price_usd"], cl))
         rows.append(row)
@@ -247,8 +252,8 @@ def select(candidates, profile, mission_hours, target_r=DEFAULT_TARGET_R,
                                          fleet_size, cl, top)
     settings = {"profile": profile, "mission_hours": mission_hours, "target_r": target_r,
                 "confidence": confidence, "warranty_hours": t_w, "fleet_size": fleet_size,
-                "repair_cost": repair_cost,
-                "cost_basis": "parts-only (unit price)" if repair_cost is None else "user repair cost",
+                "replacement_cost": replacement_cost,
+                "cost_basis": "replacement at unit price" if replacement_cost is None else "user replacement cost",
                 "n_draws": n_draws, "seed": seed, "prior": prior, "cl": cl, "default_ea": ea0,
                 "ea_mode": ea_mode}
     return Selection(table, combos, list(dict.fromkeys(warnings)), settings, lam, cheapest)

@@ -58,8 +58,8 @@ def summary_text(sel):
     lines = [f"Condition: {describe_profile(s['profile'])} for {hours:,.0f} h | target: reliability "
              f">= {target} with {conf:.0%} confidence",
              f"Warranty exposure per {fleet:,} vehicles over {s['warranty_hours']:,.0f} h; cost per failure = "
-             + ("each part's unit price (parts-only, a lower bound)" if s["repair_cost"] is None
-                else f"{money(s['repair_cost'])} (your repair cost)")]
+             + ("each failed part is replaced at its unit price" if s["replacement_cost"] is None
+                else f"{money(s['replacement_cost'])} per replacement (your value)")]
     lines += [f"Note: {w}" for w in sel.warnings]
 
     lines.append("\nBest candidate in each slot:")

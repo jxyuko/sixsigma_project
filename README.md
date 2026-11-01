@@ -38,7 +38,7 @@ modelled. Every assumption (A1–A14) and equation (E1–E21) is in [`ROADMAP.md
 **Inputs:**
 - **Required:** operating temperature (or profile), how many hours the part must work, and the
   candidates for any slots.
-- **Optional, with defaults:** target reliability (0.999), fleet size (1,000), repair cost, unit price.
+- **Optional, with defaults:** target reliability (0.999), fleet size (1,000), cost of one warranty replacement (default: the part's unit price), unit price.
 
 **Outputs:**
 

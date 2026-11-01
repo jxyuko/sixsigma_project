@@ -88,26 +88,26 @@ def test_meets_target_consistent_with_probability():
 # --- E12 / A14: warranty exposure and cost ---------------------------------------------------------
 
 def test_warranty_exposure_scales_with_fleet_and_cost():
-    a = select([raw("a", 1000)], 55, 1000, fleet_size=1000, repair_cost=1.0)
-    b = select([raw("a", 1000)], 55, 1000, fleet_size=2000, repair_cost=500.0)
+    a = select([raw("a", 1000)], 55, 1000, fleet_size=1000, replacement_cost=1.0)
+    b = select([raw("a", 1000)], 55, 1000, fleet_size=2000, replacement_cost=500.0)
     ra, rb = row(a, "a"), row(b, "a")
     assert rb["warranty_failures_median"] == pytest.approx(2 * ra["warranty_failures_median"])
     assert rb["warranty_cost_median"] == pytest.approx(500 * rb["warranty_failures_median"])
 
 
 def test_default_exposure_is_per_1000_vehicles_parts_only():
-    # A14: no fleet or repair cost given -> 1,000 vehicles, cost per failure = the unit price
+    # A14: no fleet or replacement cost given -> 1,000 vehicles, cost per failure = the unit price
     sel = select([raw("UCC21750QDWRQ1", 1000)], 55, 1000)
     r = row(sel, "UCC21750QDWRQ1")
     assert sel.settings["fleet_size"] == 1000
     assert r["unit_price_usd"] == 8.03 and r["price_source"] == "Sheet2 price of UCC21750QDWRQ1"
-    assert r["cost_per_failure"] == 8.03 and r["cost_basis"] == "parts-only (unit price)"
+    assert r["cost_per_failure"] == 8.03 and r["cost_basis"] == "replacement at unit price"
     assert r["purchase_cost"] == pytest.approx(8030)
     assert r["warranty_cost_median"] == pytest.approx(8.03 * r["warranty_failures_median"])
 
 
 def test_total_cost_is_purchase_plus_warranty_per_draw():
-    sel = select([raw("a", 1000, unit_price_usd=10.0)], 55, 1000, fleet_size=100, repair_cost=1000.0)
+    sel = select([raw("a", 1000, unit_price_usd=10.0)], 55, 1000, fleet_size=100, replacement_cost=1000.0)
     r = row(sel, "a")
     assert r["total_cost_median"] == pytest.approx(r["purchase_cost"] + r["warranty_cost_median"])
     assert r["purchase_cost"] == 1000.0
@@ -235,7 +235,7 @@ def test_script_interactive():
     # Required: temperature, hours. Optional settings: Enter. Then 2 gate-driver candidates:
     # one with test results, one with a FIT value; all other slots 0; no details.
     answers = ["150", "1000",
-               "", "", "", "",                                   # target, fleet, repair cost, warranty
+               "", "", "", "",                                   # target, fleet, replacement cost, warranty
                "0", "0", "0", "0",                               # ECU MCU, BMS AFE, isolator, temp sensor
                "2",                                              # gate driver: 2 candidates
                "Supplier X", "150", "1", "1000", "500", "0", "", "",          # test results

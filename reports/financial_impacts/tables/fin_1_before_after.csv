@@ -1,49 +1,25 @@
-condition,price_case,scenario,quantity,estimate,se,lower,upper
-55 C,Sheet2 prices (MCU family proxies),before: least reliable suppliers,failures,0.041769752464077034,0.08573943428219404,0.005353231075111578,0.3170536270169144
-55 C,Sheet2 prices (MCU family proxies),after: recommended suppliers,failures,0.020508055762164124,0.029661890157572195,0.003146340979147118,0.11161816946824499
-55 C,Sheet2 prices (MCU family proxies),saving (before - after),failures,0.017034577667572184,0.08219841139718809,-0.04870924035358839,0.2673003047325336
-55 C,Sheet2 prices (MCU family proxies),before: least reliable suppliers,warranty_cost,0.6549227716138847,1.3891608516945146,0.07214588146540409,5.10967099095492
-55 C,Sheet2 prices (MCU family proxies),after: recommended suppliers,warranty_cost,0.2171433066399313,0.28093063459303674,0.0325299350656113,1.0837938219344143
-55 C,Sheet2 prices (MCU family proxies),saving (before - after),warranty_cost,0.3890855616104748,1.3258422618678478,-0.278927656983995,4.534828749709287
-55 C,Sheet2 prices (MCU family proxies),before: least reliable suppliers,purchase_cost,67610.0,0.0,67610.0,67610.0
-55 C,Sheet2 prices (MCU family proxies),after: recommended suppliers,purchase_cost,64530.0,0.0,64530.0,64530.0
-55 C,Sheet2 prices (MCU family proxies),saving (before - after),purchase_cost,3080.0,0.0,3080.0,3080.0
-55 C,Sheet2 prices (MCU family proxies),before: least reliable suppliers,total_cost,67610.65492277162,1.389160851694527,67610.07214588147,67615.10967099095
-55 C,Sheet2 prices (MCU family proxies),after: recommended suppliers,total_cost,64530.21714330664,0.280930634593027,64530.032529935066,64531.083793821934
-55 C,Sheet2 prices (MCU family proxies),saving (before - after),total_cost,3080.389085561612,1.325842261867874,3079.7210723430217,3084.534828749716
-40/70/105 C profile,Sheet2 prices (MCU family proxies),before: least reliable suppliers,failures,0.27232248497531075,0.37187220517396324,0.04411188961873225,1.4056894192379639
-40/70/105 C profile,Sheet2 prices (MCU family proxies),after: recommended suppliers,failures,0.13165955379524444,0.13499834190870513,0.025724128101303048,0.5170693080836842
-40/70/105 C profile,Sheet2 prices (MCU family proxies),saving (before - after),failures,0.11686914540634372,0.3833852536637573,-0.2713414866005758,1.2235811400035972
-40/70/105 C profile,Sheet2 prices (MCU family proxies),before: least reliable suppliers,warranty_cost,4.296039120514614,6.045049584015809,0.5931576504240489,22.68110363483214
-40/70/105 C profile,Sheet2 prices (MCU family proxies),after: recommended suppliers,warranty_cost,1.3998989434610403,1.2456491956432765,0.2762896469867042,4.930055037267233
-40/70/105 C profile,Sheet2 prices (MCU family proxies),saving (before - after),warranty_cost,2.592311317693976,6.021409650492206,-1.6601160075017123,20.43788255124762
-40/70/105 C profile,Sheet2 prices (MCU family proxies),before: least reliable suppliers,purchase_cost,67610.0,0.0,67610.0,67610.0
-40/70/105 C profile,Sheet2 prices (MCU family proxies),after: recommended suppliers,purchase_cost,64530.0,0.0,64530.0,64530.0
-40/70/105 C profile,Sheet2 prices (MCU family proxies),saving (before - after),purchase_cost,3080.0,0.0,3080.0,3080.0
-40/70/105 C profile,Sheet2 prices (MCU family proxies),before: least reliable suppliers,total_cost,67614.29603912053,6.045049584015858,67610.59315765044,67632.68110363484
-40/70/105 C profile,Sheet2 prices (MCU family proxies),after: recommended suppliers,total_cost,64531.39989894346,1.2456491956433038,64530.27628964699,64534.93005503727
-40/70/105 C profile,Sheet2 prices (MCU family proxies),saving (before - after),total_cost,3082.592311317694,6.021409650492279,3078.339883992506,3100.4378825512435
-55 C,equal MCU prices (Sheet2 ECU average),before: least reliable suppliers,failures,0.041769752464077034,0.08573943428219404,0.005353231075111578,0.3170536270169144
-55 C,equal MCU prices (Sheet2 ECU average),after: recommended suppliers,failures,0.020508055762164124,0.029661890157572195,0.003146340979147118,0.11161816946824499
-55 C,equal MCU prices (Sheet2 ECU average),saving (before - after),failures,0.017034577667572184,0.08219841139718809,-0.04870924035358839,0.2673003047325336
-55 C,equal MCU prices (Sheet2 ECU average),before: least reliable suppliers,warranty_cost,0.6418176110198128,1.354803232592334,0.0715218599223049,4.982411566250269
-55 C,equal MCU prices (Sheet2 ECU average),after: recommended suppliers,warranty_cost,0.3231089154523269,0.47216971588033835,0.04387674899697363,1.7714613423391747
-55 C,equal MCU prices (Sheet2 ECU average),saving (before - after),warranty_cost,0.25747697935465597,1.2998625047404904,-0.7880288794493809,4.187177795020745
-55 C,equal MCU prices (Sheet2 ECU average),before: least reliable suppliers,purchase_cost,67193.33333,1.4553370638204802e-11,67193.33333,67193.33333
-55 C,equal MCU prices (Sheet2 ECU average),after: recommended suppliers,purchase_cost,72173.33333,1.4553370638204802e-11,72173.33333,72173.33333
-55 C,equal MCU prices (Sheet2 ECU average),saving (before - after),purchase_cost,-4980.0,0.0,-4980.0,-4980.0
-55 C,equal MCU prices (Sheet2 ECU average),before: least reliable suppliers,total_cost,67193.97514761103,1.3548032325923949,67193.40485185992,67198.31574156624
-55 C,equal MCU prices (Sheet2 ECU average),after: recommended suppliers,total_cost,72173.65643891545,0.4721697158802746,72173.37720674899,72175.10479134234
-55 C,equal MCU prices (Sheet2 ECU average),saving (before - after),total_cost,-4979.742523020643,1.2998625047405854,-4980.78802887945,-4975.812822204972
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),before: least reliable suppliers,failures,0.27232248497531075,0.37187220517396324,0.04411188961873225,1.4056894192379639
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),after: recommended suppliers,failures,0.13165955379524444,0.13499834190870513,0.025724128101303048,0.5170693080836842
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),saving (before - after),failures,0.11686914540634372,0.3833852536637573,-0.2713414866005758,1.2235811400035972
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),before: least reliable suppliers,warranty_cost,4.2099218260224065,5.892822018957977,0.5854298072006198,22.14403480025631
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),after: recommended suppliers,warranty_cost,2.07615976306473,2.154260700725128,0.3663996480183034,8.169057617148166
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),saving (before - after),warranty_cost,1.7486352353473678,6.07303618062476,-4.408849611558061,19.319346645140435
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),before: least reliable suppliers,purchase_cost,67193.33333,1.4553370638204802e-11,67193.33333,67193.33333
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),after: recommended suppliers,purchase_cost,72173.33333,1.4553370638204802e-11,72173.33333,72173.33333
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),saving (before - after),purchase_cost,-4980.0,0.0,-4980.0,-4980.0
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),before: least reliable suppliers,total_cost,67197.54325182602,5.892822018958022,67193.91875980719,67215.47736480024
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),after: recommended suppliers,total_cost,72175.40948976306,2.1542607007250756,72173.69972964801,72181.50238761713
-40/70/105 C profile,equal MCU prices (Sheet2 ECU average),saving (before - after),total_cost,-4978.251364764656,6.073036180624754,-4984.4088496115555,-4960.680653354857
+condition,scenario,quantity,estimate,se,lower,upper
+55 C,before: least reliable suppliers,failures,0.041769752464077034,0.08573943428219404,0.005353231075111578,0.3170536270169144
+55 C,after: recommended suppliers,failures,0.020508055762164124,0.029661890157572195,0.003146340979147118,0.11161816946824499
+55 C,saving (before - after),failures,0.017034577667572184,0.08219841139718809,-0.04870924035358839,0.2673003047325336
+55 C,before: least reliable suppliers,warranty_cost,0.6549227716138847,1.3891608516945146,0.07214588146540409,5.10967099095492
+55 C,after: recommended suppliers,warranty_cost,0.2171433066399313,0.28093063459303674,0.0325299350656113,1.0837938219344143
+55 C,saving (before - after),warranty_cost,0.3890855616104748,1.3258422618678478,-0.278927656983995,4.534828749709287
+55 C,before: least reliable suppliers,purchase_cost,67610.0,0.0,67610.0,67610.0
+55 C,after: recommended suppliers,purchase_cost,64530.0,0.0,64530.0,64530.0
+55 C,saving (before - after),purchase_cost,3080.0,0.0,3080.0,3080.0
+55 C,before: least reliable suppliers,total_cost,67610.65492277162,1.389160851694527,67610.07214588147,67615.10967099095
+55 C,after: recommended suppliers,total_cost,64530.21714330664,0.280930634593027,64530.032529935066,64531.083793821934
+55 C,saving (before - after),total_cost,3080.389085561612,1.325842261867874,3079.7210723430217,3084.534828749716
+40/70/105 C profile,before: least reliable suppliers,failures,0.27232248497531075,0.37187220517396324,0.04411188961873225,1.4056894192379639
+40/70/105 C profile,after: recommended suppliers,failures,0.13165955379524444,0.13499834190870513,0.025724128101303048,0.5170693080836842
+40/70/105 C profile,saving (before - after),failures,0.11686914540634372,0.3833852536637573,-0.2713414866005758,1.2235811400035972
+40/70/105 C profile,before: least reliable suppliers,warranty_cost,4.296039120514614,6.045049584015809,0.5931576504240489,22.68110363483214
+40/70/105 C profile,after: recommended suppliers,warranty_cost,1.3998989434610403,1.2456491956432765,0.2762896469867042,4.930055037267233
+40/70/105 C profile,saving (before - after),warranty_cost,2.592311317693976,6.021409650492206,-1.6601160075017123,20.43788255124762
+40/70/105 C profile,before: least reliable suppliers,purchase_cost,67610.0,0.0,67610.0,67610.0
+40/70/105 C profile,after: recommended suppliers,purchase_cost,64530.0,0.0,64530.0,64530.0
+40/70/105 C profile,saving (before - after),purchase_cost,3080.0,0.0,3080.0,3080.0
+40/70/105 C profile,before: least reliable suppliers,total_cost,67614.29603912053,6.045049584015858,67610.59315765044,67632.68110363484
+40/70/105 C profile,after: recommended suppliers,total_cost,64531.39989894346,1.2456491956433038,64530.27628964699,64534.93005503727
+40/70/105 C profile,saving (before - after),total_cost,3082.592311317694,6.021409650492279,3078.339883992506,3100.4378825512435

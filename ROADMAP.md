@@ -62,8 +62,8 @@ inputs:  operating temperature (or profile)  +  mission hours  +  target R(missi
            candidates, each with EITHER raw HTOL data (test temperature, hours, sample size, failures)
            OR a report summary (FIT or MTTF/MTBF, the temperature and confidence it refers to,
            failures), plus Ea if the report states one
-         + optional (defaults in brackets): target [0.999], vehicles [1,000], repair cost per
-           failure [the part's unit price], warranty hours [the mission hours], each candidate's
+         + optional (defaults in brackets): target [0.999], vehicles [1,000], cost of one warranty
+           replacement [the part's unit price], warranty hours [the mission hours], each candidate's
            unit price [Sheet2 price list], Ea [0.7 eV with A2 spread]
               │
               ▼
@@ -246,7 +246,7 @@ aren't thermally activated.
 | Each candidate's evidence: test hours + sample size + failures, **or** a FIT, **or** an MTTF/MTBF | **required** | failures 0 | Summary forms also take the temperature [test temperature] and confidence level [60%] they are stated at (A11, E15) |
 | Target reliability over the mission | optional | 0.999 | Confidence fixed at 95% (A13) |
 | Vehicles, for warranty exposure | optional | 1,000 | A14 |
-| Cost of one warranty repair | optional | the part's unit price | Parts-only lower bound (A14) |
+| Cost of one warranty replacement | optional | the part's unit price | The failed part is replaced (A14) |
 | Warranty period in operating hours | optional | the mission hours | |
 | Candidate unit price | optional | Sheet2 price list | A14 |
 | Activation energy Ea | optional | 0.7 eV with 0.5–0.9 spread | A12 |
@@ -284,8 +284,8 @@ Each assumption has an ID so code comments and the report can cite it.
 | A11 | **Report summaries as input:** a supplier's FIT or MTTF is the chi-square bound (E4) at its stated temperature and confidence level, from its stated failures. Defaults when the report doesn't say: confidence 60%, failures 0, temperature = test temperature. | This is how suppliers compute published FIT (11b reproduces TI's values this way), so the summary can be turned back into test evidence (E15) and gets the same uncertainty treatment as raw data. | `[DEFAULT]` |
 | A12 | **Activation energy for user candidates:** a value stated in the report is used as given (fixed). Otherwise Ea is drawn as in A2, centred on the library ("training data") median Ea, which is 0.7 eV because every library report assumes 0.7. | Uses the supplier's own physics when known, and the evidence in our dataset when not. | `[DEFAULT]` |
 | A13 | **Required confidence is fixed at 95%.** A candidate meets the target only if the 95% lower confidence bound on R(mission) is at least the target (E17). | Team decision (2026-10-31): one standard for every comparison, matching the 95% intervals used everywhere else. | `[DECIDED]` |
-| A14 | **Cost basis for warranty exposure:** exposure is reported per 1,000 vehicles unless the user gives a fleet size. A candidate's unit price is the user's, else the Sheet2 price of a matching part number, else the Sheet2 average for its slot. Cost per warranty failure is the user's repair cost, else the part's unit price. Total cost = purchase (vehicles × unit price) + expected warranty cost. | The user may not know fleet size or repair cost. Per-1,000 figures are readable without them, and Sheet2 prices are sourced (distributor links). Parts-only cost is a **lower bound**: real repairs add labour and often a whole module, so it understates warranty cost. | `[DECIDED]` (team, 2026-10-31) |
-| A15 | **Prices of library candidates in the financial analysis** are the library's Sheet2 match: the exact part, an orderable variant, or a **family proxy** (C2000 priced as F2800157, RH850 as R7F7016843); TMCS1101 has none and uses the Sheet2 current-sensor average. | These are the only sourced prices in our data. The MCU proxy prices drive most of the purchase difference, so a sensitivity with both MCUs at the Sheet2 ECU average is always reported (Section 10). | `[DEFAULT]` |
+| A14 | **Cost basis for warranty exposure:** exposure is reported per 1,000 vehicles unless the user gives a fleet size. A candidate's unit price is the user's, else the Sheet2 price of a matching part number, else the Sheet2 average for its slot. Each warranty failure is a replacement of the failed component; its cost is the user's replacement cost, else the part's unit price. Total cost = purchase (vehicles × unit price) + expected warranty cost. | The user may not know fleet size or replacement cost. Per-1,000 figures are readable without them, and Sheet2 prices are sourced (distributor links). Pricing a replacement at the component's own price leaves out labour and logistics, so it understates the full warranty cost. | `[DECIDED]` (team, 2026-10-31) |
+| A15 | **Prices of library candidates in the financial analysis** are the library's Sheet2 match: the exact part, an orderable variant, or a **family proxy** (C2000 priced as F2800157, RH850 as R7F7016843); TMCS1101 has none and uses the Sheet2 current-sensor average. | These are the only sourced prices in our data. The MCU proxy prices drive most of the purchase difference, so the purchase saving is stated as depending on them (Section 10). | `[DEFAULT]` |
 
 ## 7. Equations
 
@@ -339,9 +339,15 @@ Also: FIT_sys = λ_sys · 10⁹ and MTTF_sys = 1/λ_sys.
 **E11 · Paired differences.** For every metric M: ΔM = M_B − M_A and ΔM% = 100·(M_B − M_A)/M_A,
 computed draw by draw, then summarized as a median and 95% CI.
 
-**E12 · Expected warranty failures and cost** for a fleet of N vehicles:
+**E12 · Warranty exposure: expected warranty failures and cost** for a fleet of N vehicles over the
+warranty t_w, computed in every Monte Carlo draw:
 
-  E[failures] = N · F_sys(t_w);  Cost = E[failures] · C_fail
+  E[failures of part i] = N · (1 − e^(−λᵢ·t_w))
+  Warranty cost = Σᵢ E[failures of part i] · C_fail,i
+  Total cost = N · Σᵢ (unit price)ᵢ + Warranty cost
+
+C_fail,i is the cost of replacing the failed part: its unit price unless a replacement cost is given (A14). The system's failures,
+N · (1 − e^(−λ_sys·t_w)), equal the sum of the parts' expected failures to first order when F is small.
 
 **E13 · Probability B outlasts A.**  P(B0.1,B > B0.1,A) = P(λ_sys,B < λ_sys,A), estimated as the
 share of paired draws where it's true. Ties (identical draws, e.g. comparing a configuration with
@@ -392,10 +398,12 @@ saving = cost_before − cost_after, per draw, for purchase, warranty and total 
 median, standard error and 95% interval (the course's financial-analysis pattern), with
 P(after cheaper) = share of draws with saving > 0.
 
-**E23 · Break-even repair cost.** The cost of one warranty repair at which the change's warranty
-saving equals its extra purchase cost: C* = (purchase_after − purchase_before) / (failures_before −
-failures_after), per draw where the change avoids failures; reported as median and 95% interval over
-those draws. If the change is cheaper to buy, it pays off at any repair cost.
+**E23 · Break-even replacement cost.** The cost of one warranty replacement at which the change's
+warranty saving equals its extra purchase cost: C* = (purchase_after − purchase_before) /
+(failures_before − failures_after), per draw where the change avoids failures; reported as median and
+95% interval over those draws. If the change is cheaper to buy, it pays off at any replacement cost.
+Implemented and tested (`break_even_replacement_cost()`), but not reported: the recommended parts are
+cheaper to buy (Section 10).
 
 ## 8. Simulation engine
 
@@ -508,12 +516,22 @@ are valid (1c), so the demonstrated-reliability conclusions (2a, 2b) can be trus
 
 ## 10. Warranty exposure, cost and Financial Impacts
 
+**How warranty exposure is calculated** (E12, A14), in each of the 5,000 draws:
+1. Each part's failure rate λᵢ at the user's condition comes from the simulator (Sections 7–8).
+2. Expected warranty failures of part i over the warranty t_w for N vehicles: N · (1 − e^(−λᵢ·t_w)).
+   Each failure is a replacement of the failed component.
+3. Warranty cost = Σᵢ expected replacements of part i × cost of one replacement, which is the part's
+   unit price unless a replacement cost is given.
+4. Total cost = purchase (N × Σ unit prices) + warranty cost.
+5. The 5,000 draws give the median, SE and 95% interval; before and after use the same draws, so
+   their difference is paired (E22).
+
 **Cost model, built into the simulator** (A14, E12):
 - **Per candidate and per combination:** warranty failures N · F(t_w), warranty cost
   N · F(t_w) · C_fail and total cost = N · unit price + warranty cost, per draw, so 95% CIs come
   straight from the simulation.
-- **Defaults:** N = 1,000 vehicles; t_w = the mission hours; C_fail = the part's unit price, a
-  parts-only **lower bound** (labour and module replacement are not included).
+- **Defaults:** N = 1,000 vehicles; t_w = the mission hours; C_fail = the part's unit price (the
+  failed component is replaced; labour and logistics are not included).
 - **Prices:** Sheet2 of `parameter_table.xlsx` (distributor prices with links), cleaned into
   `data/prices.csv`: the candidate's own price if entered, else the Sheet2 price of a matching part
   number, else the Sheet2 average for its slot.
@@ -524,13 +542,12 @@ statistics in `functions/finance.py`, tests in `tests/test_finance.py`, outputs 
 - **Change evaluated:** BEFORE = the least reliable combination of our library candidates
   (RH850 + LTC6811-1 + ADuM141E + TMP4719 + ADuM4135 + TMCS1101); AFTER = the simulator's
   recommended, most reliable combination (all TI).
-- **Cost:** per 1,000 vehicles; purchase at Sheet2 prices (A15); warranty = expected failures over
-  2,920 h × unit price (parts-only, by team decision); total = purchase + warranty.
+- **Cost:** per 1,000 vehicles; purchase at Sheet2 prices (A15); warranty = expected replacements over
+  2,920 h × the component's unit price (team decision); total = purchase + warranty.
 - **Conditions:** 55 °C and the 40/70/105 °C profile (the hot case).
-- **Uncertainty:** the simulator's 5,000 paired draws; median, SE and 95% interval (E22);
-  break-even repair cost (E23).
-- **Price sensitivity:** both MCUs at the Sheet2 ECU average, because the MCU family-proxy prices
-  drive most of the purchase difference (A15).
+- **Uncertainty:** the simulator's 5,000 paired draws; median, SE and 95% interval (E22) for
+  every reported number (purchase, replacements, warranty cost, total, saving). No figure (none
+  required).
 - **Engineering evaluation time:** dropped (team decision 2026-11-02). It needs a measured
   reduction in evaluation time; the charter's 20% is a target, not a result, and no published study
   gives hours per supplier-reliability evaluation (searched: the only peer-reviewed figure, Robinson
@@ -538,27 +555,24 @@ statistics in `functions/finance.py`, tests in `tests/test_finance.py`, outputs 
   (NHTSA, Federal Register, 14 Feb 2025, docket NHTSA-2025-0004: BLS May 2023 engineer wage in motor
   vehicle manufacturing $52.56 ÷ 0.704) and kept for when a reduction can be measured.
 
-**Results (2026-11-02, per 1,000 vehicles, 2,920 h):**
+**Results (2026-11-02, per 1,000 vehicles, 2,920 h; median, 95% CI):**
 
-| Condition | Price case | Saving (before − after), median (95% CI) | P(after cheaper) | Break-even repair cost |
-|---|---|---|---|---|
-| 55 °C | Sheet2 (MCU proxies) | $3,080 ($3,080–3,085) | 1.00 | pays off at any repair cost |
-| 40/70/105 °C | Sheet2 (MCU proxies) | $3,083 ($3,078–3,100) | 1.00 | pays off at any repair cost |
-| 55 °C | equal MCU prices | −$4,980 (−$4,981 to −$4,976) | 0.00 | $147,630 ($16,393–5,417,699) |
-| 40/70/105 °C | equal MCU prices | −$4,978 (−$4,984 to −$4,961) | 0.00 | $22,673 ($3,679–735,161) |
+| Quantity | 55 °C | 40/70/105 °C profile |
+|---|---|---|
+| Purchase saving | $3,080 (fixed prices) | $3,080 (fixed prices) |
+| Replacements, before → after | 0.042 (0.005–0.317) → 0.021 (0.003–0.112) | 0.272 (0.044–1.406) → 0.132 (0.026–0.517) |
+| Replacements avoided | 0.017 (−0.049 to 0.267) | 0.117 (−0.271 to 1.224) |
+| Warranty saving | $0.39 (−$0.28 to $4.53) | $2.59 (−$1.66 to $20.44) |
+| Total saving | $3,080 ($3,080–3,085) | $3,083 ($3,078–3,100) |
+| P(after costs less) / P(fewer replacements) | 1.00 / 0.74 | 1.00 / 0.74 |
 
-- **Warranty failures** (per 1,000 vehicles): 0.042 → 0.021 at 55 °C, 0.272 → 0.132 on the profile;
-  the change avoids failures in 74% of draws (not significant at 95%: the CI of failures avoided
-  includes 0).
-- **Parts-only warranty saving** is USD 0.39 at 55 °C and USD 2.59 on the profile: negligible
-  next to purchase prices. Almost all of the financial difference is the purchase price, and its
-  sign depends on the MCU prices, which are family proxies (A15).
+- **Replacements** halve, but the change avoids replacements in only 74% of draws, so the reduction is
+  not significant at 95% (its CI includes 0).
+- **Warranty saving** is negligible next to purchase prices: almost all of the financial difference is
+  the purchase price, which depends on the MCU family-proxy prices (A15).
 - **Caveat:** the BEFORE combination is least reliable *by the evidence in our table*, which
   under-rates the RH850 and may over-rate the ADI parts (Section 9, Section 14).
-- **Reading:** with Sheet2 prices the recommended suppliers are both more reliable and cheaper. If
-  MCU prices are equal, the recommended parts cost $4.98 more per vehicle, and the reliability gain
-  repays that only if one warranty repair costs more than about $148k at 55 °C or $23k on the hot
-  profile (medians).
+- **Reading:** with Sheet2 prices the recommended suppliers are both more reliable and cheaper.
 
 ## 11. Evaluating the simulator
 
@@ -712,7 +726,7 @@ functions/                 the simulator (plain functions, all tested)
   validation.py     supplier_check(), coverage_study(), calibration_study()          11b, 11e
   significance.py   max_failure_rate(), target_test(), max_demonstrated_temp(), two_rate_test(),
                     one_sample_t(), proportion_ci(), bootstrap_ci(), mc_standard_error()   E18–E21, 9b
-  finance.py        qi_cost(), combination_costs(), compare_costs(), break_even_repair_cost()  E12, E22–E23
+  finance.py        qi_cost(), combination_costs(), compare_costs(), break_even_replacement_cost()  E12, E22–E23
 code/
   01_clean_data.py       raw xlsx → data/components.csv, data/prices.csv, data/reference/published_fit.csv
   02_run_simulator.py    the program users run: asks for temperature, mission hours and candidates
@@ -835,3 +849,5 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-11-02 | M7b Financial Impacts. Team decisions: evaluate the supplier change (least reliable → recommended); 55 °C plus the 40/70/105 °C profile; parts-only repair cost; per 1,000 vehicles; drop the engineering-time benefit until a reduction can be measured (charter's 20% is a target; no published hours per evaluation). New `functions/finance.py` (E22 saving, E23 break-even repair cost, `qi_cost`) with 6 tests; `analysis/03_financial_impacts.py` (4 tables, 3 plotnine figures, `key_numbers_financial.md`); A15 (library prices incl. MCU family proxies) with an equal-MCU-price sensitivity. Results: saving $3,080 per 1,000 vehicles with Sheet2 prices; −$4,980 with equal MCU prices, break-even repair cost $148k (55 °C) / $23k (profile). $74.66/h verified on govinfo.gov. 141 tests pass. |
 | 2026-11-02 | Team decision: keep RH850, LTC6811-1, ADuM141E and ADuM4135 in the library and label every result as demonstrated reliability from our table's test data (RH850 likely under-rated, ADI parts possibly over-rated). New `analysis/caveats.py`; the caveat heads all three key-numbers files; Sections 9, 10 and 14 updated. Numbers unchanged. |
 | 2026-11-02 | Sources added for A2 (Ea 0.5–0.9 eV: SEMATECH 2000 failure-models report; Vigrass, Intersil/Renesas note, 0.7 eV default) and A7 (1 h/day: AAA Foundation American Driving Survey 2024, 60.4 min/day); both `[TODO]` tags removed. No numbers changed. |
+| 2026-11-02 | Warranty exposure calculation written out step by step (E12, Section 10, code comments in `candidates.py` and `finance.py`, and `key_numbers_financial.md`). Calculation and numbers unchanged. |
+| 2026-11-02 | Financial Impacts finalized (team decision): "repair" renamed "replacement" everywhere (`replacement_cost`, `--replacement-cost`); the equal-MCU-price sensitivity, the break-even output and all three financial figures dropped (no figure required); every reported number has median, SE and 95% CI. Tables now fin_1 to fin_3. Calculation and main-case numbers unchanged. |

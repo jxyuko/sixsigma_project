@@ -24,50 +24,35 @@ our table, which under-rates the RH850; the purchase difference also depends on 
 Change: BEFORE = least reliable supplier combination, AFTER = recommended (most reliable) combination.
 Per 1,000 vehicles, mission 2,920 h (A7); 5,000 paired Monte Carlo draws, seed 5300.
 Purchase cost: Sheet2 distributor unit prices (Mouser, DigiKey; links in data/prices.csv).
-Warranty cost: expected warranty failures x the part's unit price (parts-only, a LOWER bound;
-labour and module replacement are not included).
+Warranty exposure: each warranty failure is a replacement of the failed component at its unit price
+(labour and logistics are not included).
 
-## 55 C, Sheet2 prices (MCU family proxies)
+How warranty exposure is calculated (E12), in every one of the Monte Carlo draws:
+- expected replacements of part i = N x (1 - exp(-lambda_i x t_w)), N = 1,000 vehicles, t_w = 2,920 h
+- warranty cost = sum over the parts of (expected replacements of part i x unit price of part i)
+- total cost = N x sum of unit prices (purchase) + warranty cost
+- the draws give the median, SE and 95% interval; before and after use the same draws (paired).
+Purchase cost has no uncertainty (fixed prices), so its interval has zero width.
+
+## 55 C
 - Before: R7F7016903AFP-C + LTC6811-1 + ADuM141E + TMP4719QDGSRQ1 + ADuM4135 + TMCS1101A4UQDRQ1
 - After:  F280049CPZQR + BQ79656PAPRQ1 + ISO7741QDWRQ1 + TMP4719QDGSRQ1 + UCC21750QDWRQ1 + TMCS1101A4UQDRQ1
-- Purchase cost: before 67,610.00 (95% CI 67,610.00-67,610.00; SE 0.00); after 64,530.00 (95% CI 64,530.00-64,530.00; SE 0.00)
-- Expected warranty failures: before 0.042 (95% CI 0.005-0.317; SE 0.086); after 0.021 (95% CI 0.003-0.112; SE 0.030); failures avoided 0.017 (95% CI -0.049-0.267; SE 0.082)
-- Warranty cost (parts-only): before 0.65 (95% CI 0.07-5.11; SE 1.39); after 0.22 (95% CI 0.03-1.08; SE 0.28)
-- Total cost: before 67,610.65 (95% CI 67,610.07-67,615.11; SE 1.39); after 64,530.22 (95% CI 64,530.03-64,531.08; SE 0.28)
-- Saving from the change: 3,080.39 (95% CI 3,079.72-3,084.53; SE 1.33) per 1,000 vehicles; P(after costs less) = 1.000; P(after has fewer failures) = 0.740
-- Break-even repair cost: the recommended parts cost $3,080 LESS to buy per 1,000 vehicles, so the change pays off at any repair cost
+- Purchase cost: before 67,610.00 (95% CI 67,610.00 to 67,610.00; SE 0.00); after 64,530.00 (95% CI 64,530.00 to 64,530.00; SE 0.00); saving 3,080.00 (95% CI 3,080.00 to 3,080.00; SE 0.00)
+- Expected warranty replacements: before 0.042 (95% CI 0.005 to 0.317; SE 0.086); after 0.021 (95% CI 0.003 to 0.112; SE 0.030); replacements avoided 0.017 (95% CI -0.049 to 0.267; SE 0.082)
+- Warranty cost (replacements at component price): before 0.65 (95% CI 0.07 to 5.11; SE 1.39); after 0.22 (95% CI 0.03 to 1.08; SE 0.28); saving 0.39 (95% CI -0.28 to 4.53; SE 1.33)
+- Total cost: before 67,610.65 (95% CI 67,610.07 to 67,615.11; SE 1.39); after 64,530.22 (95% CI 64,530.03 to 64,531.08; SE 0.28)
+- Saving from the change: 3,080.39 (95% CI 3,079.72 to 3,084.53; SE 1.33) per 1,000 vehicles; P(after costs less) = 1.000; P(after needs fewer replacements) = 0.740
 
-## 40/70/105 C profile, Sheet2 prices (MCU family proxies)
+## 40/70/105 C profile
 - Before: R7F7016903AFP-C + LTC6811-1 + ADuM141E + TMP4719QDGSRQ1 + ADuM4135 + TMCS1101A4UQDRQ1
 - After:  F280049CPZQR + BQ79656PAPRQ1 + ISO7741QDWRQ1 + TMP4719QDGSRQ1 + UCC21750QDWRQ1 + TMCS1101A4UQDRQ1
-- Purchase cost: before 67,610.00 (95% CI 67,610.00-67,610.00; SE 0.00); after 64,530.00 (95% CI 64,530.00-64,530.00; SE 0.00)
-- Expected warranty failures: before 0.272 (95% CI 0.044-1.406; SE 0.372); after 0.132 (95% CI 0.026-0.517; SE 0.135); failures avoided 0.117 (95% CI -0.271-1.224; SE 0.383)
-- Warranty cost (parts-only): before 4.30 (95% CI 0.59-22.68; SE 6.05); after 1.40 (95% CI 0.28-4.93; SE 1.25)
-- Total cost: before 67,614.30 (95% CI 67,610.59-67,632.68; SE 6.05); after 64,531.40 (95% CI 64,530.28-64,534.93; SE 1.25)
-- Saving from the change: 3,082.59 (95% CI 3,078.34-3,100.44; SE 6.02) per 1,000 vehicles; P(after costs less) = 1.000; P(after has fewer failures) = 0.740
-- Break-even repair cost: the recommended parts cost $3,080 LESS to buy per 1,000 vehicles, so the change pays off at any repair cost
+- Purchase cost: before 67,610.00 (95% CI 67,610.00 to 67,610.00; SE 0.00); after 64,530.00 (95% CI 64,530.00 to 64,530.00; SE 0.00); saving 3,080.00 (95% CI 3,080.00 to 3,080.00; SE 0.00)
+- Expected warranty replacements: before 0.272 (95% CI 0.044 to 1.406; SE 0.372); after 0.132 (95% CI 0.026 to 0.517; SE 0.135); replacements avoided 0.117 (95% CI -0.271 to 1.224; SE 0.383)
+- Warranty cost (replacements at component price): before 4.30 (95% CI 0.59 to 22.68; SE 6.05); after 1.40 (95% CI 0.28 to 4.93; SE 1.25); saving 2.59 (95% CI -1.66 to 20.44; SE 6.02)
+- Total cost: before 67,614.30 (95% CI 67,610.59 to 67,632.68; SE 6.05); after 64,531.40 (95% CI 64,530.28 to 64,534.93; SE 1.25)
+- Saving from the change: 3,082.59 (95% CI 3,078.34 to 3,100.44; SE 6.02) per 1,000 vehicles; P(after costs less) = 1.000; P(after needs fewer replacements) = 0.740
 
-## 55 C, equal MCU prices (Sheet2 ECU average)
-- Before: R7F7016903AFP-C + LTC6811-1 + ADuM141E + TMP4719QDGSRQ1 + ADuM4135 + TMCS1101A4UQDRQ1
-- After:  F280049CPZQR + BQ79656PAPRQ1 + ISO7741QDWRQ1 + TMP4719QDGSRQ1 + UCC21750QDWRQ1 + TMCS1101A4UQDRQ1
-- Purchase cost: before 67,193.33 (95% CI 67,193.33-67,193.33; SE 0.00); after 72,173.33 (95% CI 72,173.33-72,173.33; SE 0.00)
-- Expected warranty failures: before 0.042 (95% CI 0.005-0.317; SE 0.086); after 0.021 (95% CI 0.003-0.112; SE 0.030); failures avoided 0.017 (95% CI -0.049-0.267; SE 0.082)
-- Warranty cost (parts-only): before 0.64 (95% CI 0.07-4.98; SE 1.35); after 0.32 (95% CI 0.04-1.77; SE 0.47)
-- Total cost: before 67,193.98 (95% CI 67,193.40-67,198.32; SE 1.35); after 72,173.66 (95% CI 72,173.38-72,175.10; SE 0.47)
-- Saving from the change: -4,979.74 (95% CI -4,980.79--4,975.81; SE 1.30) per 1,000 vehicles; P(after costs less) = 0.000; P(after has fewer failures) = 0.740
-- Break-even repair cost: the recommended parts cost $4,980 MORE to buy per 1,000 vehicles; the reliability gain pays this back only if one warranty repair costs more than 147,630 USD (median; 95% CI 16,393-5,417,699; over the 74% of draws in which the change avoids failures)
-
-## 40/70/105 C profile, equal MCU prices (Sheet2 ECU average)
-- Before: R7F7016903AFP-C + LTC6811-1 + ADuM141E + TMP4719QDGSRQ1 + ADuM4135 + TMCS1101A4UQDRQ1
-- After:  F280049CPZQR + BQ79656PAPRQ1 + ISO7741QDWRQ1 + TMP4719QDGSRQ1 + UCC21750QDWRQ1 + TMCS1101A4UQDRQ1
-- Purchase cost: before 67,193.33 (95% CI 67,193.33-67,193.33; SE 0.00); after 72,173.33 (95% CI 72,173.33-72,173.33; SE 0.00)
-- Expected warranty failures: before 0.272 (95% CI 0.044-1.406; SE 0.372); after 0.132 (95% CI 0.026-0.517; SE 0.135); failures avoided 0.117 (95% CI -0.271-1.224; SE 0.383)
-- Warranty cost (parts-only): before 4.21 (95% CI 0.59-22.14; SE 5.89); after 2.08 (95% CI 0.37-8.17; SE 2.15)
-- Total cost: before 67,197.54 (95% CI 67,193.92-67,215.48; SE 5.89); after 72,175.41 (95% CI 72,173.70-72,181.50; SE 2.15)
-- Saving from the change: -4,978.25 (95% CI -4,984.41--4,960.68; SE 6.07) per 1,000 vehicles; P(after costs less) = 0.000; P(after has fewer failures) = 0.740
-- Break-even repair cost: the recommended parts cost $4,980 MORE to buy per 1,000 vehicles; the reliability gain pays this back only if one warranty repair costs more than 22,673 USD (median; 95% CI 3,679-735,161; over the 74% of draws in which the change avoids failures)
-
-## Prices used (USD per unit, main case)
+## Prices used (USD per unit)
 - BMS AFE: BQ79656PAPRQ1 25.82 (Sheet2 price of BQ79656PAPRQ1)
 - BMS AFE: LTC6811-1 18.74 (Sheet2 price of LTC6811HG-1#3ZZTRPBF (orderable variant))
 - Current sensor: TMCS1101A4UQDRQ1 17.35 (Sheet2 average for Current sensor)

@@ -8,7 +8,7 @@
 # Ask me everything:   .venv/Scripts/python code/02_run_simulator.py
 # From a file:         .venv/Scripts/python code/02_run_simulator.py --temp 200 --hours 1000
 #                          --candidates data/examples/candidates_example.csv
-# Optional:            --target 0.999 --fleet 1000 --repair-cost 500 --warranty-hours 2920 --details
+# Optional:            --target 0.999 --fleet 1000 --replacement-cost 500 --warranty-hours 2920 --details
 
 import argparse
 import sys
@@ -97,7 +97,7 @@ def ask_everything():
     print("\nOptional settings (press Enter to keep the default):")
     inputs["target"] = ask_number("  Required reliability over those hours", DEFAULT_TARGET_R)
     inputs["fleet"] = ask_number("  Vehicles, for warranty exposure", DEFAULT_FLEET, kind=int)
-    inputs["repair_cost"] = ask_number("  Cost of one warranty repair in USD (Enter = part price only)")
+    inputs["replacement_cost"] = ask_number("  Cost of one warranty replacement in USD (Enter = the part's unit price)")
     inputs["warranty_hours"] = ask_number("  Warranty period in operating hours (Enter = the hours above)")
     print("\nCandidates: for each component, how many suppliers are you comparing? "
           "(0 = not part of this decision)")
@@ -140,7 +140,7 @@ def main(argv=None):
     ap.add_argument("--candidates", help="CSV of candidates (template: data/examples/candidates_example.csv)")
     ap.add_argument("--target", type=float, default=DEFAULT_TARGET_R, help="required reliability (default 0.999)")
     ap.add_argument("--fleet", type=int, default=DEFAULT_FLEET, help="vehicles for warranty exposure (default 1000)")
-    ap.add_argument("--repair-cost", type=float, help="cost of one warranty repair, USD (default: part price)")
+    ap.add_argument("--replacement-cost", type=float, help="cost of one warranty replacement, USD (default: the part's unit price)")
     ap.add_argument("--warranty-hours", type=float, help="warranty period in operating hours (default: --hours)")
     ap.add_argument("--details", action="store_true", help="also print the full detail tables")
     ap.add_argument("--draws", type=int, default=N_DRAWS)
@@ -153,10 +153,10 @@ def main(argv=None):
         if not (args.temp and args.hours and args.candidates):
             ap.error("with a file, give --temp, --hours and --candidates (or no arguments to be asked)")
         x = {"profile": parse_profile(args.temp), "hours": args.hours, "target": args.target,
-             "fleet": args.fleet, "repair_cost": args.repair_cost, "warranty_hours": args.warranty_hours,
+             "fleet": args.fleet, "replacement_cost": args.replacement_cost, "warranty_hours": args.warranty_hours,
              "candidates": read_candidates(args.candidates), "details": args.details}
     sel = select(x["candidates"], x["profile"], x["hours"], x["target"], warranty_hours=x["warranty_hours"],
-                 fleet_size=x["fleet"], repair_cost=x["repair_cost"], n_draws=args.draws, seed=args.seed)
+                 fleet_size=x["fleet"], replacement_cost=x["replacement_cost"], n_draws=args.draws, seed=args.seed)
     report(sel, x["details"])
 
 

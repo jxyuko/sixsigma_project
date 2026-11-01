@@ -17,8 +17,11 @@ def qi_cost(x, cl=0.95):
 
 
 # combination_costs(): E12 per draw for one combination of candidates from a select() result.
-# Each part's expected warranty failures N * F_i(t_w) cost that part's cost per failure (A14); the
-# system's failures are N * F_sys(t_w). Purchase = N * sum of unit prices (no uncertainty).
+# Warranty exposure, per draw, for N vehicles over the warranty t_w (A14):
+#   warranty cost = sum_i N * (1 - exp(-lambda_i * t_w)) * cost per failure_i
+# with cost per failure_i = the part's unit price (the failed part is replaced) unless a replacement cost is given. 'failures' is the
+# system's N * F_sys(t_w) = N * (1 - exp(-lambda_sys * t_w)), which equals the sum of the parts' expected
+# failures to first order when F is small. Purchase = N * sum of unit prices (no uncertainty).
 # sel: Selection from candidates.select();  parts: candidate names, one per slot
 def combination_costs(sel, parts, fleet_size=None, warranty_hours=None):
     info = sel.candidates.set_index("name")
@@ -45,19 +48,19 @@ def compare_costs(before, after, cl=0.95):
     return out
 
 
-# break_even_repair_cost(): E23, the cost of one warranty repair at which the warranty saving of
+# break_even_replacement_cost(): E23, the cost of one warranty replacement at which the warranty saving of
 # the change equals its extra purchase cost:  C* = (purchase_after - purchase_before) / failures avoided.
 # Computed per draw where the change avoids failures. If the change does not cost more to buy
-# (premium <= 0), it pays off at any repair cost and C* = 0.
-def break_even_repair_cost(before, after, cl=0.95):
+# (premium <= 0), it pays off at any replacement cost and C* = 0.
+def break_even_replacement_cost(before, after, cl=0.95):
     premium = float(after["purchase_cost"][0] - before["purchase_cost"][0])
     avoided = before["failures"] - after["failures"]
     share_avoids = float(np.mean(avoided > 0))
     if premium <= 0:
         return {"premium": premium, "share_draws_avoiding_failures": share_avoids,
-                "estimate": 0.0, "lower": 0.0, "upper": 0.0, "pays_off_at_any_repair_cost": True}
+                "estimate": 0.0, "lower": 0.0, "upper": 0.0, "pays_off_at_any_replacement_cost": True}
     c = premium / avoided[avoided > 0]
     q = qi_cost(c, cl) if len(c) > 1 else {"estimate": np.inf, "lower": np.inf, "upper": np.inf}
     return {"premium": premium, "share_draws_avoiding_failures": share_avoids,
             "estimate": q["estimate"], "lower": q["lower"], "upper": q["upper"],
-            "pays_off_at_any_repair_cost": False}
+            "pays_off_at_any_replacement_cost": False}
