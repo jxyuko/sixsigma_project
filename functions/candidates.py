@@ -285,6 +285,9 @@ def select(candidates, condition, mission_hours, target_r=DEFAULT_TARGET_R,
                         f"total_cost_{case}": float(purchase + fails * cost)})
         # E17-E19: one-sided 95% lower confidence bound on R(mission) and the requirement check
         row["fit_upper_one_sided"] = base["upper_one_sided"] * 1e9
+        # The supplier convention (A11, E4): the 60% upper bound, chi2(0.60; 2r + 2) / 2D. Shown in the details
+        # so a user can set it next to a datasheet FIT; not used in any decision.
+        row["fit_upper_60"] = lambda_percentile(0.60, c["failures"], d) * 1e9
         row["r_mission_lower_bound"] = float(reliability(base["upper_one_sided"], mission_hours))
         row["meets_target_at_confidence"] = bool(base["upper_one_sided"] <= target_rate)
         row["fit_at_max_temp"] = base["at_max_temp"] * 1e9

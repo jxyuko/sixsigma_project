@@ -54,8 +54,22 @@ def read_candidates(path):
     return out
 
 
-def ci(x, lo, hi, f="{:.3g}"):
-    return f"{f.format(x)} ({f.format(lo)} - {f.format(hi)})"
+# num(): a readable number: 3 significant figures below 1,000, whole numbers with commas from 1,000 up
+# (never "1.38e+03"); 0 and infinity written out
+def num(x):
+    x = float(x)
+    if x == 0:
+        return "0"
+    if np.isinf(x):
+        return "inf"
+    if abs(x) >= 1000:
+        return f"{x:,.0f}"
+    return f"{x:.3g}"
+
+
+def ci(x, lo, hi, f=None):
+    fmt = num if f is None else f.format
+    return f"{fmt(x)} ({fmt(lo)} - {fmt(hi)})"
 
 
 def money(x):
@@ -64,7 +78,7 @@ def money(x):
 
 # fit_range(): "37.4 (0* - 199)": estimate with its 2.5th-97.5th percentile; * marks a lower bound of 0
 def fit_range(est, lo, hi):
-    return f"{est:.3g} ({'0*' if lo == 0 else f'{lo:.3g}'} - {hi:.3g})"
+    return f"{num(est)} ({'0*' if lo == 0 else num(lo)} - {num(hi)})"
 
 
 # combination_block(): the lines printed for one of the best combinations
@@ -73,19 +87,19 @@ def combination_block(sel, c):
     fleet = s["fleet_size"]
     met = "yes" if c["meets_target_at_confidence"] else "NO"
     lines = [f"  {c['combination']}",
-             f"  System FIT {c['system_fit_estimate']:.3g}   if every part is at its 2.5th / 97.5th percentile: "
-             f"{'0*' if c['system_fit_lower'] == 0 else format(c['system_fit_lower'], '.3g')} / "
-             f"{c['system_fit_upper']:.3g}",
-             f"  Failures per {fleet:,} vehicles: {c['warranty_failures_estimate']:.3g}   Meets target: {met} "
-             f"(95% maximum {c['system_fit_upper_one_sided']:.3g} FIT {'<=' if met == 'yes' else '>'} "
+             f"  System FIT {num(c['system_fit_estimate'])}   if every part is at its 2.5th / 97.5th percentile: "
+             f"{'0*' if c['system_fit_lower'] == 0 else num(c['system_fit_lower'])} / "
+             f"{num(c['system_fit_upper'])}",
+             f"  Failures per {fleet:,} vehicles: {num(c['warranty_failures_estimate'])}   Meets target: {met} "
+             f"(95% maximum {num(c['system_fit_upper_one_sided'])} FIT {'<=' if met == 'yes' else '>'} "
              f"{s['target_fit']:.0f})"]
     if not np.isscalar(s["condition"]):
         lines.append(f"  Worst case, all the time at {s['max_temperature']:g} C: system FIT "
-                     f"{c['system_fit_at_max_temp']:.3g}")
+                     f"{num(c['system_fit_at_max_temp'])}")
     if s["ea_range"]:
-        lines.append(f"  Over the Ea range 0.5-0.9 eV: system FIT {c['system_fit_ea_lower']:.3g} - "
-                     f"{c['system_fit_ea_upper']:.3g} (with the 95% bounds: {c['system_fit_full_lower']:.3g} - "
-                     f"{c['system_fit_full_upper']:.3g}); target still met at the unfavourable Ea: "
+        lines.append(f"  Over the Ea range 0.5-0.9 eV: system FIT {num(c['system_fit_ea_lower'])} - "
+                     f"{num(c['system_fit_ea_upper'])} (with the 95% bounds: {num(c['system_fit_full_lower'])} - "
+                     f"{num(c['system_fit_full_upper'])}); target still met at the unfavourable Ea: "
                      f"{'yes' if c['system_meets_target_at_ea_worst'] else 'NO'}")
     lines.append(f"  Total cost per {fleet:,} vehicles: {money(c['total_cost_estimate'])} (purchase "
                  f"{money(c['purchase_cost'])} + warranty {money(c['warranty_cost_estimate'])})")
@@ -147,11 +161,12 @@ def key_table(sel):
     return pd.DataFrame([{
         "Slot": r["slot"], "Rank": r["rank_in_slot"], "Part": r["name"],
         "FIT (2.5th-97.5th %)": fit_range(r["fit_estimate"], r["fit_lower"], r["fit_upper"]),
-        **({"FIT over Ea range": f"{r['fit_ea_lower']:.3g} - {r['fit_ea_upper']:.3g}"}
+        **({"FIT over Ea range": (f"{num(r['fit_ea_lower'])} - {num(r['fit_ea_upper'])}"
+                                  if r["ea_source"] != "report" else f"fixed (report Ea {r['ea_ev']:g} eV)")}
            if sel.settings["ea_range"] else {}),
-        **({f"FIT at {sel.settings['max_temperature']:g} C": f"{r['fit_at_max_temp']:.3g}"}
+        **({f"FIT at {sel.settings['max_temperature']:g} C": f"{num(r['fit_at_max_temp'])}"}
            if not np.isscalar(sel.settings["condition"]) else {}),
-        f"Failures/{fleet:,}": f"{r['warranty_failures_estimate']:.3g}",
+        f"Failures/{fleet:,}": f"{num(r['warranty_failures_estimate'])}",
         "Meets target": "yes" if r["meets_target_at_confidence"] else "NO",
         "Unit price": f"${r['unit_price_usd']:,.2f}",
     } for _, r in t.iterrows()])
@@ -187,9 +202,10 @@ def reliability_table(sel):
         "Failures": r["failures"], "AF to your condition": f"{r['af_eff']:.3g}",
         f"R({hours:,.0f} h)": ci(r["r_mission_estimate"], r["r_mission_lower"], r["r_mission_upper"], "{:.5f}"),
         "FIT": ci(r["fit_estimate"], r["fit_lower"], r["fit_upper"]),
+        "FIT 60% upper bound": num(r["fit_upper_60"]),
         **({"FIT full range (Ea + 95% CI)": ci(r["fit_estimate"], r["fit_full_lower"], r["fit_full_upper"])}
            if sel.settings["ea_range"] else {}),
-        **({f"FIT at {sel.settings['max_temperature']:g} C": f"{r['fit_at_max_temp']:.3g}"}
+        **({f"FIT at {sel.settings['max_temperature']:g} C": f"{num(r['fit_at_max_temp'])}"}
            if not np.isscalar(sel.settings["condition"]) else {}),
         "MTTF (h)": ci(r["mttf_hours_estimate"], r["mttf_hours_lower"], r["mttf_hours_upper"], "{:,.0f}"),
         "B0.1 (h)": ci(r["b01_hours_estimate"], r["b01_hours_lower"], r["b01_hours_upper"], "{:,.0f}"),

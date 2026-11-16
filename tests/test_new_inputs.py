@@ -134,3 +134,30 @@ def test_ea_range_target_check_at_unfavourable_end():
     n = math.ceil(-math.log(0.05) / (lam_t * 1000 * accel_factor(55, 125, 0.7))) + 1
     r = row(select([raw("a", n)], 55, 1000, ea_range=True, n_draws=4000), "a")
     assert r["meets_target_at_confidence"] and not r["meets_target_at_ea_worst"]
+
+
+# --- Display (2026-11-16): readable numbers, fixed-Ea label, 60% upper bound in the details --------
+
+def test_num_is_readable():
+    from functions.interface import num
+    assert num(1382.4) == "1,382" and num(0.000521) == "0.000521" and num(37.36) == "37.4"
+    assert num(0) == "0" and num(float("inf")) == "inf"
+
+
+def test_stated_ea_shown_as_fixed_in_ea_range():
+    from functions.interface import key_table
+    sel = select([raw("a", 1000), raw("b", 1000, ea_ev=0.9)], 55, 1000, ea_range=True, n_draws=500)
+    col = key_table(sel).set_index("Part")["FIT over Ea range"]
+    assert col["b"] == "fixed (report Ea 0.9 eV)" and " - " in col["a"]
+
+
+def test_60pct_upper_bound_reproduces_published_values():
+    # Known answer: TI C2000 at 55 C gives 6.21 FIT at 60% (TI publishes 6.19); a candidate entered as a
+    # published FIT gets that same FIT back as its 60% bound (A11, E15)
+    from functions.interface import reliability_table
+    c2000 = raw("c2000", 1900)
+    pub = {"slot": "Gate driver", "name": "pub", "test_temp_c": 125, "fit": 5.0, "ref_temp_c": 55, "conf_level": 0.6}
+    sel = select([c2000, pub], 55, 1000)
+    assert row(sel, "c2000")["fit_upper_60"] == pytest.approx(6.21, abs=0.01)
+    assert row(sel, "pub")["fit_upper_60"] == pytest.approx(5.0)
+    assert "FIT 60% upper bound" in reliability_table(sel).columns
