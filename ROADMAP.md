@@ -80,13 +80,20 @@ per candidate:   AF, FIT, MTTF, B0.1, R(mission): estimate + 95% CI (E4); 95% ma
 combinations:    every pick of one candidate per entered slot, ranked by estimated system FIT, with
                  system R(mission), lower bound, meets target, warranty failures, warranty cost, total
                  cost and total cost vs the most reliable one; plus the lowest-cost combination
-output order:    SUMMARY: plain sentences, the best candidate per slot (reliability, target met), the
-                          most reliable system, its warranty exposure and total cost, and the
-                          lowest-cost system if different
-                 KEY TABLE: one row per candidate: R(mission) with 95% CI, meets target, rank,
-                          warranty failures, total cost
-                 DETAILS (--details or on request; always saved to CSV): reliability, requirement
-                          check with prices and costs, all combinations
+output order:    SUMMARY: the condition and settings; then BEST COMBINATIONS, three picks, each with
+                          system FIT (estimate; every part at its 2.5th / 97.5th percentile), failures
+                          per 1,000, meets target (95% maximum vs the target FIT), worst case at the band's
+                          maximum, the Ea range if chosen, and total cost:
+                            most reliable  = lowest estimated system failure rate
+                            safest         = lowest 95% maximum system failure rate
+                            cheapest       = lowest total cost AMONG combinations that meet the target
+                                             (none if no combination meets it)
+                          then the best part in each slot (team decision 2026-11-16)
+                 ALL CANDIDATES: one row per candidate: FIT (2.5th–97.5th %, "0*" marks a zero lower
+                          bound), failures per 1,000, meets target, unit price
+                 DETAILS (--details): R(mission), its 95% lower bound and B0.1 of the best combinations,
+                          and every candidate's AF, FIT, MTTF, B0.1 and R
+                 CSV (always): every candidate and every combination with all columns
 note:            only operation above 150 °C (AEC-Q100 Grade 0) gets an informational note
 ```
 
@@ -800,3 +807,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-11-02 | Financial Impacts finalized (team decision): "repair" renamed "replacement" everywhere (`replacement_cost`, `--replacement-cost`); the equal-MCU-price sensitivity, the break-even output and all three financial figures dropped (no figure required); every reported number has median, SE and 95% CI. Tables now fin_1 to fin_3. Calculation and main-case numbers unchanged. |
 | 2026-11-14 | **v4, after the instructors' feedback** (TA and professor, 2026-11-14; v3 saved as `docs/roadmap_history/ROADMAP_v3_2026-11-14.md` and git tag `v1-gamma-model`). Failure rate now the course's exponential estimate and chi-square CI (E4, A5): λ̂ = r/D (0.693/D at r = 0), lower bound 0 at r = 0 (a positive one covered the truth only 81% of the time); Monte Carlo draws, priors, P(best), P(outlasts) and calibration removed (`functions/simulator.py`, `code/03_validation.py` deleted). One baseline (55 °C, 2,920 h, Ea 0.7 eV, exponential); new single sensitivity table (Table 5) with the 2.5th/97.5th percentile reruns, Ea 0.5/0.9, temperature, profile, mission and the lognormal/Weibull alternatives (A16, E24–E26, `functions/life_models.py`). New Table 0 of calculated parameters (calculated values used). New Section 9c, data thresholds (E27–E29, `functions/planning.py`, Recitation 12 planning). New Figure 0 flowchart. Financial Impacts rerun at the bounds. Every Recitation 12 worked example is a test. Results: all parts meet the target; all-TI FIT 6.36; no supplier difference significant; 2× differences need ~20 failures per test; total saving $3,080. 127 tests pass. |
 | 2026-11-15 | Simulator inputs (team decisions, step by step with the user): (1) **Ea option**: 0.7 eV, or a 0.5–0.9 eV range propagated by a Monte Carlo over Ea only (A2), shared or separate per part, with Ea and full-range columns and a target check at the unfavourable Ea; (2) **test groups**: a part may have several HTOL groups, D and r summed over them (E3; CSV rows with the same name, or asked interactively); (3) **temperature band** min–max replaces typed-in profiles (A3, E6), with the worst case at T_max. New `tests/test_new_inputs.py`; 137 tests pass. Reports not regenerated (they are written later). |
+| 2026-11-16 | Simulator output (team decision): the summary shows only the three best combinations (most reliable by λ̂, safest by the 95% maximum rate, cheapest among those meeting the target) and the best part per slot, led by FIT with its 2.5th/97.5th percentile and failures per 1,000; R(mission), MTTF and B0.1 moved to --details and the CSVs; the full combination list is only saved to CSV. `select()` gains `picks` (`pick_combinations()`) and lists every combination by default. 137 tests pass. |

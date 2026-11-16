@@ -134,10 +134,36 @@ def test_prices_from_sheet2():
 
 
 def test_cheapest_combination_found():
-    # a is more reliable but much more expensive than b; the cheapest total cost is b
+    # a is more reliable but much more expensive than b; both meet the target, so the cheapest is b
     sel = select([raw("a", 100_000, unit_price_usd=50.0), raw("b", 50_000, unit_price_usd=1.0)], 55, 1000)
-    assert sel.combinations.iloc[0]["combination"] == "a"
-    assert sel.cheapest["combination"] == "b"
+    assert sel.picks["most_reliable"]["combination"] == "a"
+    assert sel.picks["cheapest"]["combination"] == "b"
+
+
+def test_cheapest_only_among_combinations_meeting_the_target():
+    # c is the cheapest but fails the target (tiny test, long mission); it must never be picked
+    cands = [raw("a", 100_000, unit_price_usd=50.0), raw("c", 10, unit_price_usd=1.0)]
+    sel = select(cands, 55, 10_000)
+    assert not row(sel, "c")["meets_target_at_confidence"]
+    assert sel.picks["cheapest"]["combination"] == "a"
+    assert sel.picks["n_combinations"] == 2 and sel.picks["n_meeting_target"] == 1
+
+
+def test_no_combination_meets_the_target():
+    # Degenerate: nothing meets the target -> no cheapest pick, and the summary says so
+    from functions.interface import summary_text
+    sel = select([raw("c", 10), raw("d", 20)], 55, 10_000)
+    assert sel.picks["cheapest"] is None and sel.picks["n_meeting_target"] == 0
+    assert "No combination meets the target" in summary_text(sel)
+
+
+def test_safest_differs_from_most_reliable():
+    # x: 1 failure in a huge test (estimate 1/D, 95% maximum 4.74/D); y: zero failures in a test 1/1.5 the
+    # size (estimate 0.693 * 1.5 / D = 1.04/D, maximum 2.996 * 1.5 / D = 4.49/D). x has the lower estimate,
+    # y the lower 95% maximum.
+    sel = select([raw("x", 150_000, f=1), raw("y", 100_000)], 55, 1000)
+    assert sel.picks["most_reliable"]["combination"] == "x"
+    assert sel.picks["safest"]["combination"] == "y"
 
 
 # --- Combinations (E8, empty slots left out) -------------------------------------------------------
@@ -228,9 +254,12 @@ def test_script_from_file_summary_first():
                           "--candidates", str(EXAMPLE)],
                          capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert out.returncode == 0, out.stderr
-    assert out.stdout.index("SUMMARY") < out.stdout.index("All candidates")
-    assert "Most reliable system:" in out.stdout and "Best candidate in each slot" in out.stdout
-    assert "Details 1" not in out.stdout                        # details only on request
+    assert out.stdout.index("SUMMARY") < out.stdout.index("BEST COMBINATIONS") < out.stdout.index("ALL CANDIDATES")
+    for block in ("Most reliable (lowest estimated failure rate)", "Safest (lowest 95% maximum failure rate)",
+                  "Cheapest that meets the target", "BEST PART IN EACH SLOT"):
+        assert block in out.stdout
+    assert "DETAILS" not in out.stdout                           # details only on request
+    assert "R(1,000 h) =" not in out.stdout                      # R is in the details and CSVs, not the summary
 
 
 def test_script_details_flag():
@@ -238,7 +267,7 @@ def test_script_details_flag():
                           "--candidates", str(EXAMPLE), "--details"],
                          capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert out.returncode == 0, out.stderr
-    assert "Details 1" in out.stdout and "Details 3" in out.stdout
+    assert "DETAILS: reliability of the best combinations" in out.stdout and "B0.1 (h)" in out.stdout
 
 
 def test_script_requires_temperature_hours_and_file_together():
@@ -264,28 +293,25 @@ def test_script_interactive():
     out = subprocess.run([sys.executable, str(SCRIPT)], input="\n".join(answers) + "\n",
                          capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert out.returncode == 0, out.stderr
-    assert "Supplier X" in out.stdout and "Supplier Y" in out.stdout and "Most reliable system:" in out.stdout
+    assert "Supplier X" in out.stdout and "Supplier Y" in out.stdout and "Most reliable (lowest" in out.stdout
     assert "0.5-0.9 eV range" in out.stdout and "Worst case, all the time at 105 C" in out.stdout
 
 
 def test_printed_tables_show_every_output():
-    # Every output appears in the printed tables, with its 95% CI where it has one
-    from functions.interface import candidate_table, combination_table, key_table, reliability_table, summary_text
+    # The summary leads with FIT (2.5th-97.5th percentile) and failures; R, MTTF and B0.1 are in the details
+    from functions.interface import best_reliability_table, key_table, reliability_table, summary_text
     sel = select([raw("a", 1000), raw("b", 5000)], 55, 1000)
     rel = reliability_table(sel)
     for col in ("FIT", "MTTF (h)", "B0.1 (h)", "R(1,000 h)", "AF to your condition"):
         assert col in rel.columns
-    assert "(" in rel.loc[0, "MTTF (h)"] and "(" in rel.loc[0, "B0.1 (h)"]          # CI shown
-    cand = candidate_table(sel)
-    for col in ("FIT upper bound (95%)", "R lower bound (95%)", "Meets target", "Unit price",
-                "Warranty failures", "Warranty cost", "Purchase cost", "Total cost"):
-        assert col in cand.columns
-    combo = combination_table(sel)
-    for col in ("System FIT", "System R(mission)", "System B0.1 (h)", "Warranty failures", "Warranty cost",
-                "Total cost", "Total cost vs #1"):
-        assert col in combo.columns
-    assert "Meets target" in key_table(sel).columns
-    assert "Most reliable system: b" in summary_text(sel)
+    assert "(" in rel.loc[0, "MTTF (h)"] and "(" in rel.loc[0, "B0.1 (h)"]          # range shown
+    key = key_table(sel)
+    for col in ("FIT (2.5th-97.5th %)", "Failures/1,000", "Meets target", "Unit price"):
+        assert col in key.columns
+    assert key.loc[0, "FIT (2.5th-97.5th %)"].split("(")[1].startswith("0*")        # zero lower bound marked
+    assert list(best_reliability_table(sel)["Combination"]) == ["b"]                 # three picks, one combination
+    text = summary_text(sel)
+    assert "Most reliable (lowest estimated failure rate)\n  b" in text and "lower bound 0" in text
 
 
 def test_ea_override_for_sensitivity():

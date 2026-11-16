@@ -62,77 +62,117 @@ def money(x):
     return f"${x:,.0f}"
 
 
-# summary_text(): the first thing the user reads. Plain sentences: one recommendation per slot,
-# the most reliable combination, the cheapest combination (purchase + warranty), and the basis.
-# Every number is the estimate with its 95% interval (E4); the target check uses the one-sided 95% bound.
+# fit_range(): "37.4 (0* - 199)": estimate with its 2.5th-97.5th percentile; * marks a lower bound of 0
+def fit_range(est, lo, hi):
+    return f"{est:.3g} ({'0*' if lo == 0 else f'{lo:.3g}'} - {hi:.3g})"
+
+
+# combination_block(): the lines printed for one of the best combinations
+def combination_block(sel, c):
+    s = sel.settings
+    fleet = s["fleet_size"]
+    met = "yes" if c["meets_target_at_confidence"] else "NO"
+    lines = [f"  {c['combination']}",
+             f"  System FIT {c['system_fit_estimate']:.3g}   if every part is at its 2.5th / 97.5th percentile: "
+             f"{'0*' if c['system_fit_lower'] == 0 else format(c['system_fit_lower'], '.3g')} / "
+             f"{c['system_fit_upper']:.3g}",
+             f"  Failures per {fleet:,} vehicles: {c['warranty_failures_estimate']:.3g}   Meets target: {met} "
+             f"(95% maximum {c['system_fit_upper_one_sided']:.3g} FIT {'<=' if met == 'yes' else '>'} "
+             f"{s['target_fit']:.0f})"]
+    if not np.isscalar(s["condition"]):
+        lines.append(f"  Worst case, all the time at {s['max_temperature']:g} C: system FIT "
+                     f"{c['system_fit_at_max_temp']:.3g}")
+    if s["ea_range"]:
+        lines.append(f"  Over the Ea range 0.5-0.9 eV: system FIT {c['system_fit_ea_lower']:.3g} - "
+                     f"{c['system_fit_ea_upper']:.3g} (with the 95% bounds: {c['system_fit_full_lower']:.3g} - "
+                     f"{c['system_fit_full_upper']:.3g}); target still met at the unfavourable Ea: "
+                     f"{'yes' if c['system_meets_target_at_ea_worst'] else 'NO'}")
+    lines.append(f"  Total cost per {fleet:,} vehicles: {money(c['total_cost_estimate'])} (purchase "
+                 f"{money(c['purchase_cost'])} + warranty {money(c['warranty_cost_estimate'])})")
+    return lines
+
+
+# summary_text(): the first thing the user reads (team decision 2026-11-16): the condition, then the
+# three best combinations (most reliable, safest, cheapest that meets the target), then the best part in
+# each slot. Failure rates are FIT with their 2.5th-97.5th percentile (E4); R(mission), MTTF and B0.1 are
+# in the saved CSVs and the details.
 def summary_text(sel):
     s = sel.settings
     hours, target, conf, fleet = s["mission_hours"], s["target_r"], s["confidence"], s["fleet_size"]
-    lines = [f"Condition: {describe_condition(s['condition'])} for {hours:,.0f} h | target: reliability "
+    p = sel.picks
+    lines = [f"Condition: {describe_condition(s['condition'])} for {hours:,.0f} h | target: R({hours:,.0f} h) "
              f">= {target} with {conf:.0%} confidence",
-             f"Warranty exposure per {fleet:,} vehicles over {s['warranty_hours']:,.0f} h; cost per failure = "
-             + ("each failed part is replaced at its unit price" if s["replacement_cost"] is None
-                else f"{money(s['replacement_cost'])} per replacement (your value)")]
-    lines.append("Activation energy for parts whose report states none: "
-                 + (f"0.5-0.9 eV range (Monte Carlo, {s['n_draws']:,} draws, "
-                    + ("one draw shared by all parts)" if s["ea_shared"] else "a separate draw per part)")
-                    if s["ea_range"] else f"{s['default_ea']:g} eV"))
+             f"           (at most {s['target_fit']:.0f} FIT for the whole system)",
+             "Activation energy for parts whose report states none: "
+             + (f"0.5-0.9 eV range (Monte Carlo, {s['n_draws']:,} draws, "
+                + ("one draw shared by all parts)" if s["ea_shared"] else "a separate draw per part)")
+                if s["ea_range"] else f"{s['default_ea']:g} eV"),
+             f"Warranty exposure per {fleet:,} vehicles; each failure "
+             + ("replaces the part at its unit price" if s["replacement_cost"] is None
+                else f"costs {money(s['replacement_cost'])} (your value)"),
+             f"{p['n_combinations']:,} combinations evaluated ({p['n_meeting_target']:,} meet the target)"]
     lines += [f"Note: {w}" for w in sel.warnings]
 
-    lines.append("\nBest candidate in each slot (lowest estimated failure rate):")
-    t = sel.candidates
-    for slot in t["slot"].unique():
-        rows = t[t["slot"] == slot]
-        b = rows.iloc[0]
-        verdict = "meets the target" if b["meets_target_at_confidence"] else "does NOT meet the target"
-        lines.append(f"  {slot}: {b['name']}  R({hours:,.0f} h) = {b['r_mission_estimate']:.5f} "
-                     f"(95% CI {b['r_mission_lower']:.5f} - {b['r_mission_upper']:.5f}); {verdict}"
-                     + (f"; best of {len(rows)} candidates" if len(rows) > 1 else "; only candidate"))
+    lines += ["", "BEST COMBINATIONS", "-" * 84, "Most reliable (lowest estimated failure rate)"]
+    lines += combination_block(sel, p["most_reliable"])
+    lines += ["", "Safest (lowest 95% maximum failure rate)"]
+    lines += (["  Same as most reliable"] if p["safest"]["combination"] == p["most_reliable"]["combination"]
+              else combination_block(sel, p["safest"]))
+    lines += ["", "Cheapest that meets the target"]
+    if p["cheapest"] is None:
+        lines.append("  No combination meets the target. Closest: the safest combination above.")
+    elif p["cheapest"]["combination"] == p["most_reliable"]["combination"]:
+        lines.append("  Same as most reliable")
+    elif p["cheapest"]["combination"] == p["safest"]["combination"]:
+        lines.append("  Same as safest")
+    else:
+        lines += combination_block(sel, p["cheapest"])
+    if (sel.candidates["fit_lower"] == 0).any():
+        lines += ["", "* lower bound 0: with zero failures the test cannot rule out a failure rate of 0"]
 
-    best = sel.combinations.iloc[0]
-    verdict = "meets" if best["meets_target_at_confidence"] else "does NOT meet"
-    lines.append(f"\nMost reliable system: {best['combination']}")
-    lines.append(f"  System R({hours:,.0f} h) = {best['system_r_mission_estimate']:.5f} (all parts at their 95% "
-                 f"bounds: {best['system_r_mission_lower']:.5f} - {best['system_r_mission_upper']:.5f}); "
-                 f"{verdict} the target (95% lower bound {best['system_r_lower_bound']:.6f})")
-    if s["ea_range"]:
-        lines.append(f"  System FIT {best['system_fit_estimate']:.3g}; over the Ea range {best['system_fit_ea_lower']:.3g}"
-                     f" - {best['system_fit_ea_upper']:.3g}; full range {best['system_fit_full_lower']:.3g} - "
-                     f"{best['system_fit_full_upper']:.3g}; target still met at the unfavourable Ea: "
-                     f"{'yes' if best['system_meets_target_at_ea_worst'] else 'NO'}")
-    if not np.isscalar(s["condition"]):
-        lines.append(f"  Worst case, all the time at {s['max_temperature']:g} C: system FIT "
-                     f"{best['system_fit_at_max_temp']:.3g} (vs {best['system_fit_estimate']:.3g} over the band)")
-    lines.append(f"  Per {fleet:,} vehicles: {best['warranty_failures_estimate']:,.2f} expected warranty failures "
-                 f"({best['warranty_failures_lower']:,.2f} - {best['warranty_failures_upper']:,.2f}); "
-                 f"purchase {money(best['purchase_cost'])} + warranty {money(best['warranty_cost_estimate'])} "
-                 f"= total {money(best['total_cost_estimate'])}")
-    cheap = sel.cheapest
-    if cheap and cheap["combination"] != best["combination"]:
-        lines.append(f"\nLowest total cost: {cheap['combination']}")
-        lines.append(f"  Total {money(cheap['total_cost_estimate'])} per {fleet:,} vehicles "
-                     f"({money(best['total_cost_estimate'] - cheap['total_cost_estimate'])} less than the most "
-                     f"reliable system); system R({hours:,.0f} h) = {cheap['system_r_mission_estimate']:.5f}")
-    elif cheap:
-        lines.append("  It is also the lowest total cost.")
+    lines += ["", "BEST PART IN EACH SLOT", "-" * 84, best_parts_table(sel).to_string(index=False)]
     return "\n".join(lines)
+
+
+# best_parts_table(): the rank-1 candidate of each slot
+def best_parts_table(sel):
+    t = sel.candidates
+    return key_table(sel).loc[t["rank_in_slot"].to_numpy() == 1].drop(columns=["Rank", "Unit price"])
 
 
 # key_table(): one row per candidate with the outputs needed to decide
 def key_table(sel):
     t = sel.candidates
-    hours = sel.settings["mission_hours"]
+    fleet = sel.settings["fleet_size"]
     return pd.DataFrame([{
-        "Slot": r["slot"], "Rank": r["rank_in_slot"], "Candidate": r["name"],
-        "FIT (95% CI)": ci(r["fit_estimate"], r["fit_lower"], r["fit_upper"]),
-        **({"FIT over Ea range": ci(r["fit_estimate"], r["fit_ea_lower"], r["fit_ea_upper"])}
+        "Slot": r["slot"], "Rank": r["rank_in_slot"], "Part": r["name"],
+        "FIT (2.5th-97.5th %)": fit_range(r["fit_estimate"], r["fit_lower"], r["fit_upper"]),
+        **({"FIT over Ea range": f"{r['fit_ea_lower']:.3g} - {r['fit_ea_upper']:.3g}"}
            if sel.settings["ea_range"] else {}),
-        f"R({hours:,.0f} h) (95% CI)": ci(r["r_mission_estimate"], r["r_mission_lower"], r["r_mission_upper"], "{:.5f}"),
-        "Meets target": "yes" if r["meets_target_at_confidence"] else "no",
-        "Warranty failures": ci(r["warranty_failures_estimate"], r["warranty_failures_lower"],
-                                r["warranty_failures_upper"], "{:,.2f}"),
-        "Total cost": money(r["total_cost_estimate"]),
+        **({f"FIT at {sel.settings['max_temperature']:g} C": f"{r['fit_at_max_temp']:.3g}"}
+           if not np.isscalar(sel.settings["condition"]) else {}),
+        f"Failures/{fleet:,}": f"{r['warranty_failures_estimate']:.3g}",
+        "Meets target": "yes" if r["meets_target_at_confidence"] else "NO",
+        "Unit price": f"${r['unit_price_usd']:,.2f}",
     } for _, r in t.iterrows()])
+
+
+# best_reliability_table(): R(mission), MTTF and B0.1 of the best combinations (shown with --details)
+def best_reliability_table(sel):
+    hours = sel.settings["mission_hours"]
+    rows, seen = [], set()
+    for label, key in (("Most reliable", "most_reliable"), ("Safest", "safest"), ("Cheapest meeting target", "cheapest")):
+        c = sel.picks.get(key)
+        if c is None or c["combination"] in seen:
+            continue
+        seen.add(c["combination"])
+        rows.append({"Pick": label, "Combination": c["combination"],
+                     f"R({hours:,.0f} h)": ci(c["system_r_mission_estimate"], c["system_r_mission_lower"],
+                                              c["system_r_mission_upper"], "{:.6f}"),
+                     "95% lower bound on R": f"{c['system_r_lower_bound']:.6f}",
+                     "B0.1 (h)": ci(c["system_b01_hours_estimate"], c["system_b01_hours_lower"],
+                                    c["system_b01_hours_upper"], "{:,.0f}")})
+    return pd.DataFrame(rows)
 
 
 # --- Details (shown on request, always saved to CSV) ---------------------------------------------
@@ -153,49 +193,4 @@ def reliability_table(sel):
            if not np.isscalar(sel.settings["condition"]) else {}),
         "MTTF (h)": ci(r["mttf_hours_estimate"], r["mttf_hours_lower"], r["mttf_hours_upper"], "{:,.0f}"),
         "B0.1 (h)": ci(r["b01_hours_estimate"], r["b01_hours_lower"], r["b01_hours_upper"], "{:,.0f}"),
-    } for _, r in t.iterrows()])
-
-
-# candidate_table(): requirement check, ranking and warranty exposure per candidate
-def candidate_table(sel):
-    t = sel.candidates
-    conf = sel.settings["confidence"]
-    return pd.DataFrame([{
-        "Slot": r["slot"], "Rank": r["rank_in_slot"], "Candidate": r["name"],
-        f"FIT upper bound ({conf:.0%})": f"{r['fit_upper_one_sided']:.3g}",
-        f"R lower bound ({conf:.0%})": f"{r['r_mission_lower_bound']:.6f}",
-        "Meets target": "yes" if r["meets_target_at_confidence"] else "no",
-        "Unit price": f"${r['unit_price_usd']:,.2f} ({r['price_source']})",
-        "Warranty failures": ci(r["warranty_failures_estimate"], r["warranty_failures_lower"],
-                                r["warranty_failures_upper"], "{:,.2f}"),
-        "Warranty cost": ci(r["warranty_cost_estimate"], r["warranty_cost_lower"], r["warranty_cost_upper"], "{:,.0f}"),
-        "Purchase cost": money(r["purchase_cost"]),
-        "Total cost": ci(r["total_cost_estimate"], r["total_cost_lower"], r["total_cost_upper"], "{:,.0f}"),
-    } for _, r in t.iterrows()])
-
-
-# combination_table(): ranked slot combinations (series system); ranges put every part at its 95% bound
-def combination_table(sel):
-    t = sel.combinations
-    conf = sel.settings["confidence"]
-    return pd.DataFrame([{
-        "Rank": r["rank"], "Combination": r["combination"],
-        "System FIT": ci(r["system_fit_estimate"], r["system_fit_lower"], r["system_fit_upper"]),
-        **({"System FIT over Ea range": ci(r["system_fit_estimate"], r["system_fit_ea_lower"],
-                                           r["system_fit_ea_upper"]),
-            "Meets target at unfavourable Ea": "yes" if r["system_meets_target_at_ea_worst"] else "no"}
-           if sel.settings["ea_range"] else {}),
-        **({f"System FIT at {sel.settings['max_temperature']:g} C": f"{r['system_fit_at_max_temp']:.3g}"}
-           if not np.isscalar(sel.settings["condition"]) else {}),
-        "System R(mission)": ci(r["system_r_mission_estimate"], r["system_r_mission_lower"],
-                                r["system_r_mission_upper"], "{:.5f}"),
-        f"R lower bound ({conf:.0%})": f"{r['system_r_lower_bound']:.6f}",
-        "Meets target": "yes" if r["meets_target_at_confidence"] else "no",
-        "System B0.1 (h)": ci(r["system_b01_hours_estimate"], r["system_b01_hours_lower"],
-                              r["system_b01_hours_upper"], "{:,.0f}"),
-        "Warranty failures": ci(r["warranty_failures_estimate"], r["warranty_failures_lower"],
-                                r["warranty_failures_upper"], "{:,.2f}"),
-        "Warranty cost": ci(r["warranty_cost_estimate"], r["warranty_cost_lower"], r["warranty_cost_upper"], "{:,.0f}"),
-        "Total cost": ci(r["total_cost_estimate"], r["total_cost_lower"], r["total_cost_upper"], "{:,.0f}"),
-        "Total cost vs #1": money(r["extra_cost_vs_best"]),
     } for _, r in t.iterrows()])

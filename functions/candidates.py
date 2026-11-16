@@ -183,7 +183,7 @@ class Selection:
                                     # and at_max_temp (the estimate at the band's maximum temperature)
     lam_draws: dict = field(default_factory=dict, repr=False)   # Ea range only: name -> the same rates
                                                                 # for every Ea draw
-    cheapest: dict = field(default_factory=dict)   # combination with the lowest estimated total cost
+    picks: dict = field(default_factory=dict)      # the three best combinations (pick_combinations())
 
 
 # rates(): E3-E4, E18 for one candidate: D = sum over its test groups of n t AF(group temperature ->
@@ -230,7 +230,7 @@ def _q(x, p):
 def select(candidates, condition, mission_hours, target_r=DEFAULT_TARGET_R,
            warranty_hours=None, fleet_size=DEFAULT_FLEET, replacement_cost=None, ea_ev=None,
            ea_range=False, ea_shared=True, n_draws=N_DRAWS, seed=SEED,
-           conf=0.95, library=None, prices=None, top=10):
+           conf=0.95, library=None, prices=None, top=None):
     if mission_hours <= 0:
         raise ValueError("mission hours must be positive")
     if not 0 < target_r < 1:
@@ -301,14 +301,14 @@ def select(candidates, condition, mission_hours, target_r=DEFAULT_TARGET_R,
                              .rank(method="min").astype(int))
     table = table.sort_values(["slot", "rank_in_slot", "fit_upper"]).reset_index(drop=True)
 
-    combos, cheapest = rank_combinations(table, lam, lam_draws, mission_hours, target_rate, t_w, fleet_size, top)
+    combos, picks = rank_combinations(table, lam, lam_draws, mission_hours, target_rate, t_w, fleet_size, top)
     settings = {"condition": condition, "max_temperature": t_max, "mission_hours": mission_hours,
                 "target_r": target_r, "confidence": CONFIDENCE, "warranty_hours": t_w, "fleet_size": fleet_size,
                 "replacement_cost": replacement_cost,
                 "cost_basis": "replacement at unit price" if replacement_cost is None else "user replacement cost",
-                "default_ea": ea0, "ea_range": ea_range, "ea_shared": ea_shared,
+                "target_fit": target_rate * 1e9, "default_ea": ea0, "ea_range": ea_range, "ea_shared": ea_shared,
                 "n_draws": n_draws if ea_range else None, "seed": seed if ea_range else None}
-    return Selection(table, combos, list(dict.fromkeys(warnings)), settings, lam, lam_draws, cheapest)
+    return Selection(table, combos, list(dict.fromkeys(warnings)), settings, lam, lam_draws, picks)
 
 
 # ea_columns(): A2 Monte Carlo summaries for one part or system (rates per Ea draw):
@@ -366,9 +366,21 @@ def rank_combinations(table, lam, lam_draws, mission_hours, target_rate, t_w, fl
     rows.sort(key=lambda r: (r["system_fit_estimate"], r["system_fit_upper"]))
     best_total = rows[0]["total_cost_estimate"]
     out = [{"rank": k, **r, "extra_cost_vs_best": r["total_cost_estimate"] - best_total}
-           for k, r in enumerate(rows[:top], start=1)]
-    cheapest = min(rows, key=lambda r: r["total_cost_estimate"])
-    return pd.DataFrame(out), dict(cheapest)
+           for k, r in enumerate(rows if top is None else rows[:top], start=1)]
+    return pd.DataFrame(out), pick_combinations(out)
+
+
+# pick_combinations(): the three best combinations shown to the user (team decision 2026-11-16):
+#   most_reliable: the lowest estimated system failure rate (rank 1)
+#   safest:        the lowest one-sided 95% maximum system failure rate (rewards larger tests)
+#   cheapest:      the lowest estimated total cost AMONG combinations that meet the target; None if
+#                  none does (a cheap combination that fails the target is never suggested)
+def pick_combinations(rows):
+    meeting = [r for r in rows if r["meets_target_at_confidence"]]
+    return {"most_reliable": dict(rows[0]),
+            "safest": dict(min(rows, key=lambda r: (r["system_fit_upper_one_sided"], r["system_fit_estimate"]))),
+            "cheapest": dict(min(meeting, key=lambda r: r["total_cost_estimate"])) if meeting else None,
+            "n_combinations": len(rows), "n_meeting_target": len(meeting)}
 
 
 # library_candidate(): turn a library part into a candidate (raw test data, Ea from its report)

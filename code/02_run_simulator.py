@@ -22,8 +22,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT))
 from functions.candidates import DEFAULT_FLEET, DEFAULT_TARGET_R, select  # noqa: E402
-from functions.interface import (candidate_table, combination_table, key_table,  # noqa: E402
-                                 parse_condition, read_candidates, reliability_table, summary_text)
+from functions.interface import (best_reliability_table, key_table, parse_condition,  # noqa: E402
+                                 read_candidates, reliability_table, summary_text)
 from functions.library import SLOTS  # noqa: E402
 
 RUNS = ROOT / "results" / "tables" / "runs"
@@ -133,23 +133,22 @@ def ask_everything():
 
 
 def report(sel, details):
-    print("\n" + "=" * 100 + "\nSUMMARY\n" + "=" * 100)
+    print("\n" + "=" * 84 + "\nTASER-EV SUMMARY\n" + "=" * 84)
     print(summary_text(sel))
-    print("\n" + "-" * 100 + "\nAll candidates\n" + "-" * 100)
+    print("\nALL CANDIDATES\n" + "-" * 84)
     print(key_table(sel).to_string(index=False))
     if details:
-        print("\n" + "-" * 100 + "\nDetails 1: reliability at your condition (estimate, 95% CI)\n" + "-" * 100)
+        print("\nDETAILS: reliability of the best combinations\n" + "-" * 84)
+        print(best_reliability_table(sel).to_string(index=False))
+        print("\nDETAILS: each candidate at your condition (estimate, 2.5th-97.5th percentile)\n" + "-" * 84)
         print(reliability_table(sel).to_string(index=False))
-        print("\n" + "-" * 100 + "\nDetails 2: requirement check, prices and warranty exposure\n" + "-" * 100)
-        print(candidate_table(sel).to_string(index=False))
-        print("\n" + "-" * 100 + "\nDetails 3: system combinations, most reliable first\n" + "-" * 100)
-        print(combination_table(sel).to_string(index=False))
     RUNS.mkdir(parents=True, exist_ok=True)
     stem = RUNS / datetime.now().strftime("run_%Y%m%d_%H%M%S")
     sel.candidates.to_csv(f"{stem}_candidates.csv", index=False)
     sel.combinations.to_csv(f"{stem}_combinations.csv", index=False)
-    print(f"\nFull results saved to {Path(stem).relative_to(ROOT)}_candidates.csv and _combinations.csv"
-          + ("" if details else " (or rerun with --details to print them)"))
+    print(f"\nFull results (every combination, R(mission), MTTF, B0.1) saved to\n"
+          f"{Path(stem).relative_to(ROOT)}_candidates.csv and _combinations.csv"
+          + ("" if details else " (--details prints R, MTTF and B0.1)"))
 
 
 def main(argv=None):
