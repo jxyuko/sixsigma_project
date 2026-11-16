@@ -186,10 +186,19 @@ whole-system warranty converted to powered-on hours (8 years × 1 h/day, A7).
 - **Warranty exposure and cost:** expected failures and cost per 1,000 vehicles, and total cost
   with the purchase price (Section 10).
 
-**Other life distributions (E24–E26, A16).** The lognormal and Weibull are fitted to each test with
-a shape parameter from the literature (SEMATECH 2000: lognormal σ ≈ 0.5 wear-out, ≈ 1.5 defects;
-β = 1.2/σ), because zero-failure tests cannot estimate a shape. They are rows of the sensitivity
-table; the exponential stays the baseline. The Lesson 12B chi-square goodness-of-fit test needs
+**Other life distributions (E24–E26, A16; internal, team decision 2026-11-16).** The simulator can run
+the lognormal and Weibull (`select(..., life_model=...)`); `code/03_compare_life_models.py` runs all of them
+on the same inputs for the team, and users see the exponential. Each is fitted to the same test evidence,
+with a shape from the literature because zero-failure tests cannot estimate one and the course gives no
+semiconductor values (SEMATECH 2000: lognormal σ ≈ 0.5 wear-out, ≈ 1.5 defects; β = 1.2/σ). The reason to
+keep the exponential as final is Lesson 12: it needs only "a nearly constant failure rate over the time we
+care about" and is "also fine when we only need the AFR for a period"; SEMATECH adds that it works with few
+or zero failures. The data cannot pick a model by fit (no failure times), and comparing with published FITs
+would be circular (suppliers computed them with the exponential), so the comparison asks whether the
+decision changes. First result (library parts, 55 °C, 2,920 h): the cheapest pick meeting the target is the
+same under all five models; the most reliable and safest picks differ only in the ECU MCU (C2000 under the
+exponential and Weibull β 0.8; RH850 under the lognormal and Weibull β 2.4, because its 150 °C test gives it
+the longest equivalent test time); every pick meets the target under every model. The Lesson 12B chi-square goodness-of-fit test needs
 observed failure times, which zero-failure HTOL tests do not have, so the distribution cannot be
 tested from our data.
 
@@ -409,16 +418,18 @@ cost_after for purchase, warranty and total cost (E12), at the baseline and at e
 failures_after). Implemented and tested (`break_even_replacement_cost()`), not reported: the
 recommended parts are cheaper to buy (Section 10).
 
-**E24 · Fraction failed in the test** (life models, A16). With r of n devices failed by t_eq = T·AF
-equivalent use-hours: estimate F = r/n (r = 0: 1 − 0.5^(1/n)); p-percentile = exact binomial
-(Clopper-Pearson); r = 0: 1 − (1 − p)^(1/n) above the median, 0 below it.
+**E24 · Expected test failures to match** (life models, internal, A16). Every model must reproduce the
+same test evidence as the exponential: μ = λ · D, with λ the E4 estimate or percentile (μ = 0.693 for the
+zero-failure estimate, 3.689 for its 97.5th percentile, r with r failures, 0 for a zero lower bound).
 
-**E25 · Scale that passes through the test.** Exponential λ = −ln(1 − F)/t_eq (r = 0 gives exactly
-the course formula −ln(1 − p)/(n t_eq)); Weibull η = t_eq / (−ln(1 − F))^(1/β); lognormal
-t50 = t_eq / exp(σ z(F)).
+**E25 · Scale fitted to the test.** Each test group g has n_g devices run t_g = T_g · AF_g equivalent use-hours;
+expected failures are the summed cumulative hazards, Σ_g n_g H(t_g) = μ:
+Weibull H(t) = (t/η)^β, so η^β = Σ_g n_g t_g^β / μ (Weibayes); lognormal H(t) = −ln(1 − Φ(ln(t/t50)/σ)), t50
+solved numerically; exponential (β = 1) λ = μ / D, exactly E4. A report summary (FIT/MTTF) gives n·T only, so
+T = 1,000 h (AEC-Q100 HTOL) is assumed for it.
 
-**E26 · Unreliability at the mission.** Exponential 1 − e^(−λt); Weibull 1 − exp(−(t/η)^β);
-lognormal Φ(ln(t/t50)/σ). Series system: F_sys = 1 − Π(1 − F_i).
+**E26 · Average failure rate over the mission** (Lesson 12): AFR = H(mission)/mission, so R(mission) =
+e^(−AFR·mission) is exact and a series system adds AFRs. For the exponential AFR = λ (the FIT).
 
 **E27 · Planning: sample size or test time** (Recitation 12). Device-hours to demonstrate λ_obj with
 confidence c and at most r failures: n·T = χ²(c; 2r + 2)/(2 λ_obj) (r = 0: −ln(1 − c)/λ_obj); solve for
@@ -672,7 +683,7 @@ functions/                 the simulator (plain functions, all tested)
                     price_for(), load_prices(), library_candidate()
   interface.py      parse_profile(), read_candidates(), summary_text(), key_table(), detail tables
   library.py        load_library(), get_part()                                        component library
-  life_models.py    fraction_failed(), scale(), unreliability(), mission_unreliability() E24–E26, A16
+  life_models.py    mission_afr(), lognormal_t50(), lognormal_cum_hazard()  (internal) E24–E26, A16
   planning.py       unit_hours_needed(), sample_size(), required_test_time(),
                     two_rate_power(), failures_for_power()                            E27–E29
   significance.py   max_failure_rate(), target_test(), max_demonstrated_temp(), two_rate_test(),
@@ -681,6 +692,7 @@ functions/                 the simulator (plain functions, all tested)
   finance.py        combination_costs(), compare_costs(), break_even_replacement_cost()  E12, E22–E23
 code/
   01_clean_data.py       raw xlsx → data/components.csv, data/prices.csv, data/reference/published_fit.csv
+  03_compare_life_models.py  INTERNAL: the same inputs under the exponential, lognormal and Weibull
   02_run_simulator.py    the program users run: asks for temperature, mission hours and candidates
                          (or --temp --hours --candidates file.csv); prints SUMMARY → key table →
                          details; saves CSVs to results/tables/runs/ (git-ignored)
@@ -810,3 +822,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-11-15 | Simulator inputs (team decisions, step by step with the user): (1) **Ea option**: 0.7 eV, or a 0.5–0.9 eV range propagated by a Monte Carlo over Ea only (A2), shared or separate per part, with Ea and full-range columns and a target check at the unfavourable Ea; (2) **test groups**: a part may have several HTOL groups, D and r summed over them (E3; CSV rows with the same name, or asked interactively); (3) **temperature band** min–max replaces typed-in profiles (A3, E6), with the worst case at T_max. New `tests/test_new_inputs.py`; 137 tests pass. Reports not regenerated (they are written later). |
 | 2026-11-16 | Simulator output (team decision): the summary shows only the three best combinations (most reliable by λ̂, safest by the 95% maximum rate, cheapest among those meeting the target) and the best part per slot, led by FIT with its 2.5th/97.5th percentile and failures per 1,000; R(mission), MTTF and B0.1 moved to --details and the CSVs; the full combination list is only saved to CSV. `select()` gains `picks` (`pick_combinations()`) and lists every combination by default. 137 tests pass. |
 | 2026-11-16 | Output tidy-up after testing with made-up inputs (13 of 13 hand checks exact): numbers print readably (1,382, not 1.38e+03); a part whose report states its Ea shows "fixed (report Ea … eV)" in the Ea-range column; the details add each part's 60% upper bound FIT (`fit_upper_60`, the supplier convention, which reproduces a published FIT or MTTF input exactly), to be discussed in the reports. 140 tests pass. |
+| 2026-11-16 | Life models in the simulator (internal, team decision: no built-in library; the three models are compared by the team, users see the exponential). `select()` gains `life_model` and `shape`; `functions/life_models.py` rewritten to fit each model to the same expected test failures μ = λD over the part's test groups (E24–E26: Weibayes for the Weibull, a numerical t50 for the lognormal; β = 1 reproduces the exponential exactly) and report the AFR over the mission. New internal `code/03_compare_life_models.py`. Why the exponential stays final: Lesson 12 conditions; SEMATECH only for the shape values. 141 tests pass. |

@@ -27,6 +27,7 @@ from scipy.stats import chi2
 
 from functions.arrhenius import EA_MAX, EA_MIN, accel_factor, effective_af, max_temperature
 from functions.evidence import lambda_ci, lambda_percentile, mttf_hours
+from functions.life_models import MODELS, mission_afr
 from functions.library import SLOTS, load_library
 from functions.reliability import b_life, reliability, unreliability
 
@@ -36,6 +37,7 @@ CONFIDENCE = 0.95               # A13: required confidence that the target is me
 MAX_JUNCTION_C = 150            # AEC-Q100 Grade 0 upper ambient limit; above it, warn
 MAX_COMBINATIONS = 20_000
 N_DRAWS, SEED = 5000, 5300        # A2 Ea Monte Carlo (only when the user chooses an Ea range)
+SUMMARY_TEST_HOURS = 1000.0      # AEC-Q100 HTOL duration, assumed for report summaries (life models only)
 DEFAULT_FLEET = 1000            # A14: warranty exposure is reported per 1,000 vehicles unless a fleet is given
 PRICES_PATH = Path(__file__).resolve().parents[1] / "data" / "prices.csv"   # Sheet2, cleaned
 
@@ -107,7 +109,9 @@ def evidence_device_hours(c, ea_supplier):
     return nt, source
 
 
-# groups_of(): a candidate's HTOL test groups as [(test_temp_c, n * t device-hours, failures), ...].
+# groups_of(): a candidate's HTOL test groups as [(test_temp_c, n * t device-hours, failures, t hours), ...].
+# t matters only for the lognormal / Weibull models; a report summary (FIT / MTTF) gives n * t alone, so
+# t is taken as the standard 1,000 h HTOL (AEC-Q100), SUMMARY_TEST_HOURS.
 # A report may pool several test groups at different temperatures and sizes (e.g. Renesas ISL78714's
 # seven HTOL groups). Given as c["groups"] = [{test_temp_c, test_hours, sample_size, failures}, ...];
 # otherwise the candidate's own fields are one group. A report summary (FIT / MTTF, E15) is one group.
@@ -121,7 +125,9 @@ def groups_of(c, ea_supplier):
             f = int(g.get("failures") or 0)
             if f < 0:
                 raise ValueError(f"{c.get('name')}: failures can't be negative")
-            out.append((float(g["test_temp_c"]), nt, f))
+            hours = float(g["test_hours"]) if g.get("test_hours") is not None and pd.notna(g.get("test_hours")) \
+                else SUMMARY_TEST_HOURS
+            out.append((float(g["test_temp_c"]), nt, f, hours))
         return out, "raw test data" if len(out) == 1 else f"raw test data, {len(out)} groups"
     if c.get("test_temp_c") is None or pd.isna(c.get("test_temp_c")):
         raise ValueError(f"{c.get('name')}: test_temp_c is required")
@@ -129,7 +135,8 @@ def groups_of(c, ea_supplier):
     f = int(c.get("failures") or 0)
     if f < 0:
         raise ValueError(f"{c.get('name')}: failures can't be negative")
-    return [(float(c["test_temp_c"]), nt, f)], source
+    hours = float(c["test_hours"]) if source == "raw test data" else SUMMARY_TEST_HOURS
+    return [(float(c["test_temp_c"]), nt, f, hours)], source
 
 
 # clean_candidates(): validate the user's candidates and resolve evidence and Ea for each
@@ -189,11 +196,18 @@ class Selection:
 # rates(): E3-E4, E18 for one candidate: D = sum over its test groups of n t AF(group temperature ->
 # the operating band, Ea), then the estimate, 95% bounds and one-sided 95% bound from the summed failures.
 # ea may be one value or an array of Ea draws (the rates are then arrays).
-def rates(groups, condition, ea):
-    d = sum(nt * effective_af(condition, t_test, ea) for t_test, nt, _ in groups)
-    r = sum(f for _, _, f in groups)
+# life_model (internal, E24-E26): "exponential" (the model users see) returns the rates themselves; for
+# "lognormal" / "weibull" each rate becomes that model's average failure rate over the mission (AFR), fitted
+# to the same expected test failures mu = lambda * D, with each group's n devices run t AF equivalent hours.
+def rates(groups, condition, ea, life_model="exponential", shape=None, mission_hours=None):
+    afs = [effective_af(condition, t_test, ea) for t_test, *_ in groups]
+    d = sum(nt * af for (_, nt, _, _), af in zip(groups, afs))
+    r = sum(g[2] for g in groups)
     out = lambda_ci(r, d)
     out["upper_one_sided"] = lambda_percentile(CONFIDENCE, r, d)
+    if life_model != "exponential":
+        units = [(nt / hours, hours * af) for (_, nt, _, hours), af in zip(groups, afs)]
+        out = {k: mission_afr(life_model, units, v * d, mission_hours, shape) for k, v in out.items()}
     return out, d
 
 
@@ -227,9 +241,13 @@ def _q(x, p):
 # the same draw (similar silicon), False a separate draw per part. The Ea columns then give the
 # 2.5th-97.5th percentile of the estimate over the draws, and the full range combines them with the
 # rate's own 95% bounds. A stated Ea is always used as given.
+# life_model (internal comparison only, E24-E26, A16): "exponential" (default, the final model), or
+# "lognormal" / "weibull" with shape sigma / beta (default: SEMATECH defect shapes). For those, every rate
+# column is the average failure rate over the mission (AFR, Lesson 12), so R(mission), the target check and
+# warranty failures over the mission are exact; B0.1 and MTTF then assume that average rate.
 def select(candidates, condition, mission_hours, target_r=DEFAULT_TARGET_R,
            warranty_hours=None, fleet_size=DEFAULT_FLEET, replacement_cost=None, ea_ev=None,
-           ea_range=False, ea_shared=True, n_draws=N_DRAWS, seed=SEED,
+           ea_range=False, ea_shared=True, n_draws=N_DRAWS, seed=SEED, life_model="exponential", shape=None,
            conf=0.95, library=None, prices=None, top=None):
     if mission_hours <= 0:
         raise ValueError("mission hours must be positive")
@@ -239,6 +257,8 @@ def select(candidates, condition, mission_hours, target_r=DEFAULT_TARGET_R,
         raise ValueError("fleet size must be positive")
     if replacement_cost is not None and replacement_cost < 0:
         raise ValueError("replacement cost can't be negative")
+    if life_model not in MODELS:
+        raise ValueError(f"life model must be one of {MODELS}")
     if conf != 0.95:
         raise ValueError("the confidence interval is fixed at 95% (A13)")
     cand = clean_candidates(candidates, library, prices)
@@ -260,8 +280,9 @@ def select(candidates, condition, mission_hours, target_r=DEFAULT_TARGET_R,
     rows, lam, lam_draws = [], {}, {}
     for _, c in cand.iterrows():
         ea = c["ea_ev"] if c["ea_source"] == "report" else ea0
-        base, d = rates(c["groups"], condition, ea)
-        base["at_max_temp"] = rates(c["groups"], t_max, ea)[0]["estimate"]
+        lm = {"life_model": life_model, "shape": shape, "mission_hours": mission_hours}
+        base, d = rates(c["groups"], condition, ea, **lm)
+        base["at_max_temp"] = rates(c["groups"], t_max, ea, **lm)[0]["estimate"]
         lam[c["name"]] = base
         cost = c["unit_price_usd"] if replacement_cost is None else replacement_cost
         purchase = fleet_size * c["unit_price_usd"]
@@ -293,7 +314,7 @@ def select(candidates, condition, mission_hours, target_r=DEFAULT_TARGET_R,
         row["fit_at_max_temp"] = base["at_max_temp"] * 1e9
         if ea_range and c["ea_source"] != "report":
             ea_draws = shared if ea_shared else draw_ea(n_draws, rng, ea0)
-            lam_draws[c["name"]] = rates(c["groups"], condition, ea_draws)[0]
+            lam_draws[c["name"]] = rates(c["groups"], condition, ea_draws, **lm)[0]
         elif ea_range:
             lam_draws[c["name"]] = {k: np.full(n_draws, v) for k, v in base.items() if k in RATES}
         if ea_range:
@@ -309,7 +330,7 @@ def select(candidates, condition, mission_hours, target_r=DEFAULT_TARGET_R,
                 "target_r": target_r, "confidence": CONFIDENCE, "warranty_hours": t_w, "fleet_size": fleet_size,
                 "replacement_cost": replacement_cost,
                 "cost_basis": "replacement at unit price" if replacement_cost is None else "user replacement cost",
-                "target_fit": target_rate * 1e9, "default_ea": ea0, "ea_range": ea_range, "ea_shared": ea_shared,
+                "target_fit": target_rate * 1e9, "default_ea": ea0, "life_model": life_model, "shape": shape, "ea_range": ea_range, "ea_shared": ea_shared,
                 "n_draws": n_draws if ea_range else None, "seed": seed if ea_range else None}
     return Selection(table, combos, list(dict.fromkeys(warnings)), settings, lam, lam_draws, picks)
 
