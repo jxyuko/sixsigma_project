@@ -127,7 +127,7 @@ one candidate entered in report-summary form (UCC21750's published 0.2 FIT at 55
 | `fit` or `mttf_hours` | summary form | FIT or h | The report's FIT or MTTF/MTBF (E15) |
 | `ref_temp_c` | summary form, optional | °C | Temperature the FIT/MTTF refers to (default `test_temp_c`) |
 | `conf_level` | summary form, optional | fraction | Confidence level of the FIT/MTTF (default 0.60, A11) |
-| `ea_ev` | optional | eV | Activation energy stated in the report (default: library median, A12) |
+| `ea_ev` | optional | eV | Activation energy stated in the report (default: the library's 0.7 eV, A12) |
 | `unit_price_usd` | optional | USD | Purchase price (default: Sheet2 price for the part, else the slot average, A14) |
 | `source` | no | | Where the values come from (not read by the code) |
 

@@ -8,8 +8,8 @@ import pytest
 from scipy import stats
 
 from functions.arrhenius import accel_factor
-from functions.significance import (bootstrap_ci, max_demonstrated_temp, max_failure_rate, mc_standard_error,
-                                    one_sample_t, proportion_ci, target_rate, target_test, two_rate_test)
+from functions.significance import (max_demonstrated_temp, max_failure_rate, one_sample_t, proportion_ci,
+                                    target_rate, target_test, two_rate_test)
 
 D55 = 1900 * 1000 * accel_factor(55, 125, 0.7)        # TI C2000 device-hours at 55 C
 
@@ -90,7 +90,7 @@ def test_two_rate_test_known_answer():
     assert res["p_two_sided"] == pytest.approx(0.25)
 
 
-# --- t-test, proportions, bootstrap, MC error ---------------------------------------------------
+# --- t-test and proportions ---------------------------------------------------
 
 def test_one_sample_t_known_answer():
     res = one_sample_t([1.0, 2.0, 3.0], mu0=0)
@@ -115,20 +115,3 @@ def test_proportion_ci():
     assert proportion_ci(0, 10)["lower"] == 0.0
     with pytest.raises(ValueError):
         proportion_ci(5, 3)
-
-
-def test_bootstrap_ci_degenerate_and_mean():
-    rng = np.random.default_rng(1)
-    const = bootstrap_ci(np.full(50, 2.0), np.mean, rng)
-    assert const == {"estimate": 2.0, "lower": 2.0, "upper": 2.0}
-    x = np.random.default_rng(2).normal(10, 1, 400)
-    ci = bootstrap_ci(x, np.mean, rng)
-    assert ci["lower"] < 10 < ci["upper"]
-    assert ci["upper"] - ci["lower"] == pytest.approx(2 * 1.96 / math.sqrt(400), rel=0.2)
-
-
-def test_mc_standard_error():
-    res = mc_standard_error([1.0, 2.0, 3.0])
-    assert res["se"] == 1.0 and res["relative_se"] == 0.5
-    with pytest.raises(ValueError):
-        mc_standard_error([1.0])

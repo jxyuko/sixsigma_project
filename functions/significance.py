@@ -2,7 +2,7 @@
 # Significance tests and confidence intervals for the Preliminary Results (ROADMAP Section 9b).
 # Course methods: exponential "maximum failure rate" bounds with chi-square k-factors (useful-life
 # lessons and the statistical tables handout), one-sample t-test and confidence intervals (comparing
-# groups), proportion CIs, and the percentile bootstrap (the qi() idea).
+# groups) and exact proportion CIs.
 
 import numpy as np
 from scipy import stats
@@ -90,20 +90,3 @@ def proportion_ci(k, n, conf=0.95, p0=None, alternative="two-sided"):
         out["p_value"] = float(stats.binomtest(int(k), int(n), p0, alternative=alternative).pvalue)
     return out
 
-
-# bootstrap_ci(): percentile bootstrap CI of statistic(x) (resample rows with replacement)
-def bootstrap_ci(x, statistic, rng, n_boot=2000, conf=0.95):
-    x = np.asarray(x)
-    idx = rng.integers(0, len(x), size=(n_boot, len(x)))
-    boots = np.array([statistic(x[i]) for i in idx])
-    lo, hi = np.quantile(boots, [(1 - conf) / 2, (1 + conf) / 2])
-    return {"estimate": float(statistic(x)), "lower": float(lo), "upper": float(hi)}
-
-
-# mc_standard_error(): Monte Carlo standard error of an output, from repeated runs with different seeds
-def mc_standard_error(values):
-    v = np.asarray(values, dtype=float)
-    if len(v) < 2:
-        raise ValueError("need at least 2 runs")
-    return {"runs": len(v), "mean": float(v.mean()), "se": float(v.std(ddof=1)),
-            "relative_se": float(v.std(ddof=1) / abs(v.mean())) if v.mean() else np.nan}

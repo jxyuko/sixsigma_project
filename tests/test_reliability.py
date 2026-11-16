@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 
 from functions.evidence import fit
-from functions.reliability import (b_life, density, hazard, p_meets_warranty, reliability,
+from functions.reliability import (b_life, density, hazard, reliability,
                                    series_lambda, unreliability, warranty_ratio)
 
 LAM = 6.21e-9   # TI C2000 at 55 C, failures per hour
@@ -85,18 +85,12 @@ def test_b_life_rejects_bad_p():
         b_life(LAM, p=0)
 
 
-# --- E10 and E14: warranty ---------------------------------------------------------------------
+# --- E10: warranty ---------------------------------------------------------------------
 
 def test_warranty_ratio_degenerate():
     # A warranty exactly at B0.1 gives WR = 1, which counts as meeting it
     b = b_life(LAM)
     assert warranty_ratio(b, b) == pytest.approx(1.0)
-    assert p_meets_warranty(np.array([1.0])) == 1.0
-
-
-def test_p_meets_warranty_known_share():
-    assert p_meets_warranty(np.array([0.5, 0.9, 1.0, 2.0])) == 0.5
-    assert p_meets_warranty(np.zeros(10)) == 0.0
 
 
 def test_warranty_ratio_rejects_bad_hours():

@@ -1,11 +1,12 @@
 # arrhenius.py
-# Temperature acceleration (ROADMAP Section 7, E1, E2, E6) and the Ea draw (A2).
+# Temperature acceleration (ROADMAP Section 7, E1, E2, E6).
 
 import numpy as np
 
 BOLTZMANN_EV = 8.617333e-5  # k, eV/K
 
-# A2: Ea ~ triangular(min, mode, max) in eV, one shared draw per Monte Carlo run
+# A2: Ea = 0.7 eV, the value every report in our library assumes; 0.5 and 0.9 eV bracket it in the
+# sensitivity table (the range of the main thermally activated mechanisms, SEMATECH 2000)
 EA_MIN, EA_MODE, EA_MAX = 0.5, 0.7, 0.9
 
 
@@ -34,6 +35,33 @@ def check_profile(profile):
     return temps, weights
 
 
+# operating_profile(): the user's operating condition as (temperature C, time fraction) bins (A3).
+#   55            -> one temperature
+#   (40, 105)     -> a band: the part runs across 40-105 C, time spread evenly (team decision 2026-11-15),
+#                    as BAND_BINS equal bins at their midpoints
+#   [(T, w), ...] -> an explicit profile (kept for internal use)
+BAND_BINS = 200
+
+
+def operating_profile(condition):
+    if np.isscalar(condition):
+        return [(float(condition), 1.0)]
+    if len(condition) == 2 and all(np.isscalar(x) for x in condition):
+        t_min, t_max = float(min(condition)), float(max(condition))
+        if t_min == t_max:
+            return [(t_min, 1.0)]
+        edges = np.linspace(t_min, t_max, BAND_BINS + 1)
+        return [(float(t), 1.0 / BAND_BINS) for t in (edges[:-1] + edges[1:]) / 2]
+    return [(float(t), float(w)) for t, w in condition]
+
+
+# max_temperature(): the hottest temperature of the condition (a band's t_max, not its last bin)
+def max_temperature(condition):
+    if not np.isscalar(condition) and len(condition) == 2 and all(np.isscalar(x) for x in condition):
+        return float(max(condition))
+    return max(t for t, _ in operating_profile(condition))
+
+
 # effective_af(): E6, dynamic AF over a temperature profile {(T_i, w_i)}
 # Averages the failure RATES, not the AFs or temperatures: 1/AF_eff = sum(w_i / AF(T_i)).
 # Equivalent to the Arrhenius average temperature of Tencer et al. (2004).
@@ -41,14 +69,9 @@ def check_profile(profile):
 # t_test_c: [numeric] test temperature C
 # ea_ev: [numeric or array of R draws] activation energy; returns one AF_eff per Ea value
 def effective_af(profile, t_test_c, ea_ev):
-    temps, weights = check_profile(profile)
+    temps, weights = check_profile(operating_profile(profile))
     ea = np.asarray(ea_ev, dtype=float)
     af = accel_factor(temps, t_test_c, ea[..., None])     # shape (..., bins)
     af_eff = 1 / np.sum(weights / af, axis=-1)
     return float(af_eff) if np.ndim(af_eff) == 0 else af_eff
 
-
-# draw_ea(): A2, R draws of the activation energy from triangular(0.5, 0.7, 0.9) eV
-# rng: numpy Generator (fixed seed for reproducibility, Section 8)
-def draw_ea(size, rng):
-    return rng.triangular(EA_MIN, EA_MODE, EA_MAX, size=size)

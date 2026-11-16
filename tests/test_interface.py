@@ -4,30 +4,28 @@
 
 import pytest
 
-from functions.interface import CANDIDATE_COLUMNS, describe_profile, parse_profile, read_candidates
+from functions.interface import CANDIDATE_COLUMNS, describe_condition, parse_condition, read_candidates
 
 
 def test_parse_single_temperature():
-    assert parse_profile("55") == 55.0
-    assert parse_profile(" 85.5 ") == 85.5
+    assert parse_condition("55") == 55.0
+    assert parse_condition(" 85.5 ") == 85.5
 
 
-def test_parse_profile_fractions_and_percent():
-    expected = [(40.0, 0.5), (70.0, 0.3), (105.0, 0.2)]
-    assert parse_profile("40:0.5, 70:0.3, 105:0.2") == expected
-    pct = parse_profile("40:50,70:30,105:20")
-    assert [t for t, _ in pct] == [t for t, _ in expected]
-    assert [w for _, w in pct] == pytest.approx([w for _, w in expected])
+def test_parse_band():
+    # the operating band (min-max) the part runs across (2026-11-15); profiles are no longer typed in
+    assert parse_condition("40-105") == (40.0, 105.0)
+    assert parse_condition("40.5 - 85") == (40.5, 85.0)
 
 
-def test_parse_profile_rejects_text():
+def test_parse_condition_rejects_text():
     with pytest.raises(ValueError):
-        parse_profile("hot")
+        parse_condition("hot")
 
 
-def test_describe_profile():
-    assert describe_profile(55.0) == "55 C"
-    assert describe_profile([(40, 0.5), (70, 0.5)]) == "40 C for 50%, 70 C for 50%"
+def test_describe_condition():
+    assert describe_condition(55.0) == "55 C"
+    assert describe_condition((40.0, 105.0)) == "40-105 C (time spread evenly over the band)"
 
 
 def test_read_candidates_requires_key_columns(tmp_path):

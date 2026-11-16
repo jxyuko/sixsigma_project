@@ -1,6 +1,6 @@
 # test_candidates.py
-# The simulator: supplier selection with select() (ROADMAP Section 2, E15-E17, A11-A14): known answers and
-# degenerate cases.
+# The simulator: supplier selection with select() (ROADMAP Section 2, E4, E15-E19, A11-A14): known answers
+# and degenerate cases.
 
 import math
 import subprocess
@@ -11,8 +11,7 @@ import numpy as np
 import pytest
 
 from functions.arrhenius import accel_factor
-from functions.candidates import (clean_candidates, default_ea, library_candidate, p_best, select,
-                                  evidence_device_hours)
+from functions.candidates import clean_candidates, default_ea, evidence_device_hours, library_candidate, select
 from functions.interface import read_candidates
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,39 +49,47 @@ def test_summary_at_test_temperature_degenerate():
     assert nt == pytest.approx(-math.log(0.4) / 1e-6, rel=1e-9)
 
 
-# --- E16: P(best) ---------------------------------------------------------------------------------
+# --- E4 in select(): estimate and 95% interval at the use condition -------------------------------
 
-def test_p_best_degenerate():
-    x = np.array([[1.0, 1.0], [2.0, 2.0]])
-    assert p_best(x) == pytest.approx([0.5, 0.5])           # identical candidates split evenly
-    assert p_best(np.array([[3.0], [1.0]])) == pytest.approx([1.0])
-    assert p_best(np.random.default_rng(1).random((100, 4))).sum() == pytest.approx(1.0)
-
-
-def test_p_best_closed_form_three_zero_failure_candidates():
-    # Zero-failure candidates at the same test temperature share an AF per draw, so
-    # lambda_i ~ Exp(D_i) / AF and P(i is lowest) = D_i / sum D. n = 1,000 / 2,000 / 7,000 -> 0.1 / 0.2 / 0.7
-    cands = [raw("a", 1000), raw("b", 2000), raw("c", 7000)]
-    sel = select(cands, 55, 1000, n_draws=20_000)
-    assert [row(sel, n)["p_best_in_slot"] for n in "abc"] == pytest.approx([0.1, 0.2, 0.7], abs=0.015)
+def test_select_known_answer_at_test_temperature():
+    # At T_op = T_test, AF = 1. n = 1,000, 1,000 h, r = 0: D = 1e6.
+    # estimate = ln 2 / D; 95% CI = [0, -ln 0.025 / D]; one-sided 95% bound = -ln 0.05 / D
+    r = row(select([raw("a", 1000)], 125, 1000), "a")
+    assert r["fit_estimate"] == pytest.approx(math.log(2) / 1e6 * 1e9)
+    assert r["fit_lower"] == 0.0 and r["warranty_failures_lower"] == 0.0 and r["r_mission_upper"] == 1.0
+    assert r["fit_upper"] == pytest.approx(-math.log(0.025) / 1e6 * 1e9)
+    assert r["fit_upper_one_sided"] == pytest.approx(-math.log(0.05) / 1e6 * 1e9)
 
 
-# --- E17: reliability requirement ------------------------------------------------------------------
+def test_bounds_flip_for_reliability_and_life():
+    # R, MTTF and B0.1 fall as the rate rises, so their lower bound comes from the rate's upper bound
+    r = row(select([raw("a", 1000, f=2)], 55, 1000), "a")
+    for m in ("r_mission", "mttf_hours", "b01_hours", "fit", "warranty_failures"):
+        assert r[f"{m}_lower"] < r[f"{m}_estimate"] < r[f"{m}_upper"]
+    assert r["mttf_hours_lower"] == pytest.approx(1e9 / r["fit_upper"])
+
+
+def test_ranking_by_estimate():
+    sel = select([raw("a", 1000), raw("b", 2000), raw("c", 7000)], 55, 1000)
+    assert list(sel.candidates["name"]) == ["c", "b", "a"]
+    assert list(sel.candidates["rank_in_slot"]) == [1, 2, 3]
+
+
+# --- E17-E19: reliability requirement ---------------------------------------------------------------
 
 def test_r_lower_bound_known_answer():
-    # At T_op = T_test, AF = 1 for any Ea. lambda ~ Exp(D), so the 95% lower bound on R(t) is
-    # exp(-t * -ln(0.05) / D). D = 1e6, t = 1000 -> 0.997009
-    sel = select([raw("a", 1000)], 125, 1000, n_draws=50_000)
+    # At T_op = T_test, AF = 1: the 95% lower bound on R(t) is exp(-t * -ln(0.05) / D). D = 1e6, t = 1000
+    sel = select([raw("a", 1000)], 125, 1000)
     assert sel.settings["confidence"] == 0.95
-    expected = math.exp(-1000 * -math.log(0.05) / 1e6)
-    assert 1 - row(sel, "a")["r_mission_lower_bound"] == pytest.approx(1 - expected, rel=0.03)
+    assert row(sel, "a")["r_mission_lower_bound"] == pytest.approx(math.exp(-1000 * -math.log(0.05) / 1e6))
 
 
-def test_meets_target_consistent_with_probability():
-    sel = select([raw("a", 87285), raw("b", 231)], 55, 1000, target_r=0.999)
+def test_meets_target_matches_course_test():
+    # Meets the target <=> the 95% maximum failure rate is at most -ln(target) / mission (E19)
+    sel = select([raw("a", 87285), raw("b", 231)], 55, 10_000, target_r=0.999)
     for _, r in sel.candidates.iterrows():
-        # Meeting the target with 95% confidence <=> P(R >= target) >= 0.95 (up to MC ties)
-        assert r["meets_target_at_confidence"] == (r["p_meets_target"] >= 0.95)
+        assert r["meets_target_at_confidence"] == (r["fit_upper_one_sided"] / 1e9 <= -math.log(0.999) / 10_000)
+    assert row(sel, "a")["meets_target_at_confidence"] and not row(sel, "b")["meets_target_at_confidence"]
 
 
 # --- E12 / A14: warranty exposure and cost ---------------------------------------------------------
@@ -91,8 +98,9 @@ def test_warranty_exposure_scales_with_fleet_and_cost():
     a = select([raw("a", 1000)], 55, 1000, fleet_size=1000, replacement_cost=1.0)
     b = select([raw("a", 1000)], 55, 1000, fleet_size=2000, replacement_cost=500.0)
     ra, rb = row(a, "a"), row(b, "a")
-    assert rb["warranty_failures_median"] == pytest.approx(2 * ra["warranty_failures_median"])
-    assert rb["warranty_cost_median"] == pytest.approx(500 * rb["warranty_failures_median"])
+    for case in ("estimate", "lower", "upper"):
+        assert rb[f"warranty_failures_{case}"] == pytest.approx(2 * ra[f"warranty_failures_{case}"])
+        assert rb[f"warranty_cost_{case}"] == pytest.approx(500 * rb[f"warranty_failures_{case}"])
 
 
 def test_default_exposure_is_per_1000_vehicles_parts_only():
@@ -103,13 +111,14 @@ def test_default_exposure_is_per_1000_vehicles_parts_only():
     assert r["unit_price_usd"] == 8.03 and r["price_source"] == "Sheet2 price of UCC21750QDWRQ1"
     assert r["cost_per_failure"] == 8.03 and r["cost_basis"] == "replacement at unit price"
     assert r["purchase_cost"] == pytest.approx(8030)
-    assert r["warranty_cost_median"] == pytest.approx(8.03 * r["warranty_failures_median"])
+    assert r["warranty_cost_estimate"] == pytest.approx(8.03 * r["warranty_failures_estimate"])
 
 
-def test_total_cost_is_purchase_plus_warranty_per_draw():
+def test_total_cost_is_purchase_plus_warranty_in_every_case():
     sel = select([raw("a", 1000, unit_price_usd=10.0)], 55, 1000, fleet_size=100, replacement_cost=1000.0)
     r = row(sel, "a")
-    assert r["total_cost_median"] == pytest.approx(r["purchase_cost"] + r["warranty_cost_median"])
+    for case in ("estimate", "lower", "upper"):
+        assert r[f"total_cost_{case}"] == pytest.approx(r["purchase_cost"] + r[f"warranty_cost_{case}"])
     assert r["purchase_cost"] == 1000.0
 
 
@@ -138,7 +147,8 @@ def test_empty_slots_left_out_and_single_slot_system():
     assert set(sel.combinations["combination"]) == {"a", "b"}
     best = sel.combinations.iloc[0]
     assert best["combination"] == "b"
-    assert best["system_fit_median"] == pytest.approx(row(sel, "b")["fit_median"])
+    for case in ("estimate", "lower", "upper"):
+        assert best[f"system_fit_{case}"] == pytest.approx(row(sel, "b")[f"fit_{case}"])
 
 
 def test_best_combination_is_best_per_slot_when_dominant():
@@ -147,7 +157,13 @@ def test_best_combination_is_best_per_slot_when_dominant():
     sel = select(cands, 55, 1000)
     assert sel.combinations.iloc[0]["combination"] == "iso_good + gd_good"
     assert len(sel.combinations) == 4
-    assert sel.combinations["p_best_combination"].sum() == pytest.approx(1.0)
+    best = sel.combinations.iloc[0]
+    # E8: the system estimate sums the parts' estimates; its bounds put every part at its bound
+    for case in ("estimate", "lower", "upper"):
+        assert best[f"system_fit_{case}"] == pytest.approx(row(sel, "iso_good")[f"fit_{case}"]
+                                                           + row(sel, "gd_good")[f"fit_{case}"])
+    assert best["system_fit_upper_one_sided"] == pytest.approx(row(sel, "iso_good")["fit_upper_one_sided"]
+                                                               + row(sel, "gd_good")["fit_upper_one_sided"])
 
 
 # --- Ea (A12) and warnings -------------------------------------------------------------------------
@@ -160,7 +176,7 @@ def test_stated_ea_is_used_exactly():
     sel = select([raw("a", 1000, ea_ev=0.9)], 55, 1000)
     r = row(sel, "a")
     assert r["ea_source"] == "report"
-    assert r["af_eff_lower"] == r["af_eff_upper"] == pytest.approx(accel_factor(55, 125, 0.9))
+    assert r["af_eff"] == pytest.approx(accel_factor(55, 125, 0.9))
 
 
 def test_above_and_below_test_temperature_both_reported():
@@ -168,9 +184,9 @@ def test_above_and_below_test_temperature_both_reported():
     # Both give a normal reliability result; only a note above 150 C remains.
     cold = select([raw("a", 1000)], 55, 1000)
     hot = select([raw("a", 1000)], 200, 1000)
-    assert row(cold, "a")["af_eff_median"] > 1 > row(hot, "a")["af_eff_median"]
-    assert row(cold, "a")["r_mission_median"] > row(hot, "a")["r_mission_median"]
-    assert 0 < row(hot, "a")["r_mission_median"] < 1
+    assert row(cold, "a")["af_eff"] > 1 > row(hot, "a")["af_eff"]
+    assert row(cold, "a")["r_mission_estimate"] > row(hot, "a")["r_mission_estimate"]
+    assert 0 < row(hot, "a")["r_mission_estimate"] < 1
     assert cold.warnings == []
     assert len(hot.warnings) == 1 and "above 150 C" in hot.warnings[0]
 
@@ -200,7 +216,7 @@ def test_library_candidate_matches_raw_data():
 def test_example_file_reads_and_runs():
     cands = read_candidates(EXAMPLE)
     assert len(cands) == 7
-    sel = select(cands, 55, 1000, n_draws=1000)
+    sel = select(cands, 55, 1000)
     assert set(sel.candidates["slot"]) == {"ECU MCU", "Digital isolator", "Gate driver"}
 
 
@@ -209,17 +225,17 @@ SCRIPT = ROOT / "code" / "02_run_simulator.py"
 
 def test_script_from_file_summary_first():
     out = subprocess.run([sys.executable, str(SCRIPT), "--temp", "200", "--hours", "1000",
-                          "--candidates", str(EXAMPLE), "--draws", "500"],
+                          "--candidates", str(EXAMPLE)],
                          capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert out.returncode == 0, out.stderr
     assert out.stdout.index("SUMMARY") < out.stdout.index("All candidates")
-    assert "Most reliable system:" in out.stdout and "Best candidate in each slot:" in out.stdout
+    assert "Most reliable system:" in out.stdout and "Best candidate in each slot" in out.stdout
     assert "Details 1" not in out.stdout                        # details only on request
 
 
 def test_script_details_flag():
     out = subprocess.run([sys.executable, str(SCRIPT), "--temp", "55", "--hours", "1000",
-                          "--candidates", str(EXAMPLE), "--details", "--draws", "500"],
+                          "--candidates", str(EXAMPLE), "--details"],
                          capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert out.returncode == 0, out.stderr
     assert "Details 1" in out.stdout and "Details 3" in out.stdout
@@ -234,18 +250,22 @@ def test_script_requires_temperature_hours_and_file_together():
 def test_script_interactive():
     # Required: temperature, hours. Optional settings: Enter. Then 2 gate-driver candidates:
     # one with test results, one with a FIT value; all other slots 0; no details.
-    answers = ["150", "1000",
+    answers = ["40-105", "1000",
                "", "", "", "",                                   # target, fleet, replacement cost, warranty
+               "2", "",                                          # Ea: range 0.5-0.9 eV, shared
                "0", "0", "0", "0",                               # ECU MCU, BMS AFE, isolator, temp sensor
                "2",                                              # gate driver: 2 candidates
-               "Supplier X", "150", "1", "1000", "500", "0", "", "",          # test results
-               "Supplier Y", "125", "2", "0.5", "0", "55", "0.6", "", "6",    # FIT 0.5 at 55 C, $6
+               "Supplier X", "1", "2",                           # test results, 2 test groups
+               "150", "1000", "500", "0",                        #   group 1
+               "125", "1000", "300", "1", "", "",                #   group 2; Ea, price: Enter
+               "Supplier Y", "2", "125", "0.5", "0", "55", "0.6", "", "6",    # FIT 0.5 at 55 C, $6
                "0",                                              # current sensor
                ""]                                               # details: no
-    out = subprocess.run([sys.executable, str(SCRIPT), "--draws", "500"], input="\n".join(answers) + "\n",
+    out = subprocess.run([sys.executable, str(SCRIPT)], input="\n".join(answers) + "\n",
                          capture_output=True, text=True, cwd=ROOT, timeout=120)
     assert out.returncode == 0, out.stderr
     assert "Supplier X" in out.stdout and "Supplier Y" in out.stdout and "Most reliable system:" in out.stdout
+    assert "0.5-0.9 eV range" in out.stdout and "Worst case, all the time at 105 C" in out.stdout
 
 
 def test_printed_tables_show_every_output():
@@ -257,26 +277,22 @@ def test_printed_tables_show_every_output():
         assert col in rel.columns
     assert "(" in rel.loc[0, "MTTF (h)"] and "(" in rel.loc[0, "B0.1 (h)"]          # CI shown
     cand = candidate_table(sel)
-    for col in ("R lower bound (95%)", "P(R >= target)", "Meets target", "P(best in slot)", "Unit price",
+    for col in ("FIT upper bound (95%)", "R lower bound (95%)", "Meets target", "Unit price",
                 "Warranty failures", "Warranty cost", "Purchase cost", "Total cost"):
         assert col in cand.columns
     combo = combination_table(sel)
     for col in ("System FIT", "System R(mission)", "System B0.1 (h)", "Warranty failures", "Warranty cost",
-                "Total cost", "Total cost vs #1", "P(best)"):
+                "Total cost", "Total cost vs #1"):
         assert col in combo.columns
     assert "Meets target" in key_table(sel).columns
     assert "Most reliable system: b" in summary_text(sel)
 
 
-def test_ea_modes_for_sensitivity():
-    cands = [raw("a", 1000), raw("b", 2000)]
-    fixed = select(cands, 55, 1000, ea_mode="fixed")
-    assert row(fixed, "a")["af_eff_lower"] == row(fixed, "a")["af_eff_upper"] == pytest.approx(accel_factor(55, 125, 0.7))
-    shared = select(cands, 55, 1000)
-    indep = select(cands, 55, 1000, ea_mode="independent")
-    # shared: both candidates (same T_test) get the same AF in every draw, so identical AF summaries
-    assert row(shared, "a")["af_eff_median"] == row(shared, "b")["af_eff_median"]
-    assert row(indep, "a")["af_eff_median"] != row(indep, "b")["af_eff_median"]
-    assert indep.settings["ea_mode"] == "independent"
-    with pytest.raises(ValueError):
-        select(cands, 55, 1000, ea_mode="other")
+def test_ea_override_for_sensitivity():
+    # Candidates without a stated Ea use the library 0.7 eV, or the ea_ev given (A2 sensitivity);
+    # a stated Ea is never overridden
+    cands = [raw("a", 1000), raw("b", 1000, ea_ev=0.6)]
+    base, hi = select(cands, 55, 1000), select(cands, 55, 1000, ea_ev=0.9)
+    assert row(base, "a")["af_eff"] == pytest.approx(accel_factor(55, 125, 0.7))
+    assert row(hi, "a")["af_eff"] == pytest.approx(accel_factor(55, 125, 0.9))
+    assert row(hi, "b")["af_eff"] == row(base, "b")["af_eff"] == pytest.approx(accel_factor(55, 125, 0.6))

@@ -23,15 +23,17 @@ For each candidate part, the simulator:
 2. **Moves it to the user's temperature** with the Arrhenius acceleration factor
    AF = exp[(Ea/k)(1/T_use − 1/T_test)]. This works in both directions: cooler than the test
    gives AF > 1, hotter gives AF < 1. A temperature profile averages the failure rates over time.
-3. **Treats the failure rate as uncertain.** With zero failures we only know the rate is small,
-   so it is drawn from Gamma(f + 1, n · t · AF); the activation energy Ea is drawn from
-   0.5–0.9 eV (most likely 0.7).
+3. **Estimates the failure rate from the test** with the course's exponential method: estimate
+   r / D (0.693 / D with zero failures), where D = devices × hours × AF, and a 95% confidence
+   interval from the chi-square k-factors (Recitation 12). Ea is 0.7 eV, the value every report uses.
 4. **Builds the system** as parts in series: system failure rate = sum of the part rates.
-5. **Repeats 5,000 times** (Monte Carlo) and reports each result as a median with a 95%
-   confidence interval.
+5. **Reports one baseline** (the estimates) and reruns everything with every part at its 2.5th and
+   97.5th percentile failure rate.
 
-Constant failure rate (exponential life) is assumed, and only thermal failure mechanisms are
-modelled. Every assumption (A1–A14) and equation (E1–E21) is in [`ROADMAP.md`](ROADMAP.md).
+Constant failure rate (exponential life) is the baseline; lognormal and Weibull alternatives, Ea,
+temperature and mission are rows of one sensitivity table. Only thermal failure mechanisms are
+modelled. Figure 0 (`reports/preliminary_results/figures/figure0_flowchart.png`) shows how it is
+used. Every assumption (A1–A16) and equation (E1–E29) is in [`ROADMAP.md`](ROADMAP.md).
 
 ## What it computes
 
@@ -42,10 +44,10 @@ modelled. Every assumption (A1–A14) and equation (E1–E21) is in [`ROADMAP.md
 
 **Outputs:**
 
-| For | Outputs (95% CIs) |
+| For | Outputs (estimate with 95% CI) |
 |---|---|
-| Each candidate | AF, FIT, MTTF, B0.1 life, reliability over the mission R(t), the 95% lower bound on R, whether the target is met, chance it is the best in its slot |
-| Each system combination | system FIT, R(t), B0.1, target check, chance it is the best combination |
+| Each candidate | AF, FIT, MTTF, B0.1 life, reliability over the mission R(t), the 95% maximum failure rate and lower bound on R, whether the target is met, rank in its slot |
+| Each system combination | system FIT, R(t), B0.1, target check, rank |
 | Warranty exposure | expected failures, warranty cost and total cost (purchase + warranty) per 1,000 vehicles, using Sheet2 prices |
 
 The output starts with a **plain-language summary**: the best candidate per slot, the most
@@ -86,11 +88,11 @@ to validate it, never as inputs. Unit prices come from Sheet2 (`data/prices.csv`
 ```
 data/raw/         source data as collected (parameter_table.xlsx) - never edited by code
 data/             cleaned inputs (components.csv, prices.csv), codebook, examples/
-functions/        the simulator: equations, Monte Carlo engine, statistics (all tested)
-code/             01 clean data, 02 run the simulator, 03 validation
+functions/        the simulator: equations, life models, planning, statistics (all tested)
+code/             01 clean data, 02 run the simulator
 analysis/         report analyses and plotnine figures (only call functions/)
 reports/          Preliminary Results and Financial Impacts tables, figures and key numbers
-results/          local outputs of simulator runs and validation (git-ignored)
+results/          local outputs of simulator runs (git-ignored)
 tests/            known-answer and degenerate-case checks for every statistic
 ROADMAP.md        the single source of truth: approach, assumptions, equations, results, changelog
 ```

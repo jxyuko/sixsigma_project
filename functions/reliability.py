@@ -1,11 +1,19 @@
 # reliability.py
-# Life functions, series system, B-life and warranty (ROADMAP Section 7, E7-E10, E14).
+# Life functions, series system, B-life and warranty (ROADMAP Section 7, E7-E10).
 # Constant hazard (A1); series system with independent failures (A4).
 # FIT and MTTF (E5) are in evidence.py.
 
 import numpy as np
 
 HOURS_PER_YEAR = 8760
+
+# A7 [ASSUMPTION, team decision 2026-10-31]: one warranty for the whole system,
+# 8 years x 365 days x 1 powered-on hour per day = 2,920 operating hours.
+# The 8 years is the common EV battery-warranty term. 1 h/day: U.S. drivers average 60.4 minutes of driving
+# per day (AAA Foundation for Traffic Safety, American Driving Survey: 2024, Dec. 2025).
+WARRANTY_YEARS = 8
+POWERED_HOURS_PER_DAY = 1.0
+DEFAULT_WARRANTY_HOURS = WARRANTY_YEARS * 365 * POWERED_HOURS_PER_DAY
 
 
 # reliability(): E7, R(t) = exp(-lambda t)
@@ -46,7 +54,8 @@ def series_lambda(lams, qty=None):
 def b_life(lam_sys, p=0.001):
     if not 0 < p < 1:
         raise ValueError("p must be between 0 and 1")
-    return -np.log1p(-p) / np.asarray(lam_sys, dtype=float)
+    with np.errstate(divide="ignore"):
+        return -np.log1p(-p) / np.asarray(lam_sys, dtype=float)
 
 
 # warranty_ratio(): E10, WR = B0.1 / t_w; WR >= 1 means B0.1 outlasts the warranty
@@ -56,7 +65,3 @@ def warranty_ratio(b01, t_w):
         raise ValueError("warranty hours must be positive")
     return np.asarray(b01) / t_w
 
-
-# p_meets_warranty(): E14, share of Monte Carlo draws with WR >= 1
-def p_meets_warranty(wr):
-    return float(np.mean(np.asarray(wr) >= 1))
