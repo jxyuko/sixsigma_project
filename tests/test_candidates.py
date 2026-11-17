@@ -210,14 +210,16 @@ def test_stated_ea_is_used_exactly():
 
 def test_above_and_below_test_temperature_both_reported():
     # AF works in both directions: below T_test AF > 1 (more reliable), above it AF < 1 (less reliable).
-    # Both give a normal reliability result; only a note above 150 C remains.
+    # Both give a normal reliability result; above the test temperature a note says the result is
+    # extrapolated beyond the test, and above 150 C a second note flags the automotive limit.
     cold = select([raw("a", 1000)], 55, 1000)
     hot = select([raw("a", 1000)], 200, 1000)
     assert row(cold, "a")["af_eff"] > 1 > row(hot, "a")["af_eff"]
     assert row(cold, "a")["r_mission_estimate"] > row(hot, "a")["r_mission_estimate"]
     assert 0 < row(hot, "a")["r_mission_estimate"] < 1
     assert cold.warnings == []
-    assert len(hot.warnings) == 1 and "above 150 C" in hot.warnings[0]
+    assert len(hot.warnings) == 2 and "above 150 C" in hot.warnings[0]
+    assert "above its test temperature" in hot.warnings[1]
 
 
 def test_input_errors():
@@ -273,10 +275,11 @@ def test_script_details_flag():
     assert "DETAILS: reliability of the best combinations" in out.stdout and "B0.1 (h)" in out.stdout
 
 
-def test_script_requires_temperature_hours_and_file_together():
-    out = subprocess.run([sys.executable, str(SCRIPT), "--temp", "55", "--candidates", str(EXAMPLE)],
+def test_script_requires_temperature_with_a_file():
+    # --hours is optional (default 2,920 h, A7); a file still needs --temp
+    out = subprocess.run([sys.executable, str(SCRIPT), "--candidates", str(EXAMPLE)],
                          capture_output=True, text=True, cwd=ROOT, timeout=120)
-    assert out.returncode != 0 and "--hours" in out.stderr
+    assert out.returncode != 0 and "--temp" in out.stderr
 
 
 def test_script_interactive():
@@ -289,8 +292,8 @@ def test_script_interactive():
                "2",                                              # gate driver: 2 candidates
                "Supplier X", "1", "2",                           # test results, 2 test groups
                "150", "1000", "500", "0",                        #   group 1
-               "125", "1000", "300", "1", "", "",                #   group 2; Ea, price: Enter
-               "Supplier Y", "2", "125", "0.5", "0", "55", "0.6", "", "6",    # FIT 0.5 at 55 C, $6
+               "125", "1000", "300", "1", "", "", "",            #   group 2; Ea, price, qty: Enter
+               "Supplier Y", "2", "125", "0.5", "0", "55", "0.6", "", "6", "3",   # FIT 0.5 at 55 C, $6, 3 per vehicle
                "0",                                              # current sensor
                ""]                                               # details: no
     out = subprocess.run([sys.executable, str(SCRIPT)], input="\n".join(answers) + "\n",
@@ -298,6 +301,7 @@ def test_script_interactive():
     assert out.returncode == 0, out.stderr
     assert "Supplier X" in out.stdout and "Supplier Y" in out.stdout and "Most reliable (lowest" in out.stdout
     assert "0.5-0.9 eV range" in out.stdout and "Worst case, all the time at 105 C" in out.stdout
+    assert "Parts per vehicle: Gate driver: Supplier Y 3, Supplier X 1." in out.stdout
 
 
 def test_printed_tables_show_every_output():

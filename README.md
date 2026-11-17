@@ -38,9 +38,10 @@ used. Every assumption (A1–A16) and equation (E1–E29) is in [`ROADMAP.md`](R
 ## What it computes
 
 **Inputs:**
-- **Required:** operating temperature (or profile), how many hours the part must work, and the
-  candidates for any slots.
-- **Optional, with defaults:** target reliability (0.999), fleet size (1,000), cost of one warranty replacement (default: the part's unit price), unit price.
+- **Required:** operating temperature (or a band), and the candidates for any slots.
+- **Optional, with defaults:** mission hours (2,920 h = 8-year EV battery warranty × 1 h/day), parts per
+  vehicle for each candidate (1), target reliability (0.999), fleet size (1,000), cost of one warranty
+  replacement (default: the part's unit price), unit price (default: the slot's Sheet2 average).
 
 **Outputs:**
 

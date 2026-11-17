@@ -9,7 +9,8 @@ HOURS_PER_YEAR = 8760
 
 # A7 [ASSUMPTION, team decision 2026-10-31]: one warranty for the whole system,
 # 8 years x 365 days x 1 powered-on hour per day = 2,920 operating hours.
-# The 8 years is the common EV battery-warranty term. 1 h/day: U.S. drivers average 60.4 minutes of driving
+# The 8 years is the federal EV/PHEV high-voltage battery warranty, 8 years or 80,000 miles (Clean Air Act
+# Section 207(i)(2), model year 2027+; U.S. DOE Alternative Fuels Data Center, afdc.energy.gov/laws/14222). 1 h/day: U.S. drivers average 60.4 minutes of driving
 # per day (AAA Foundation for Traffic Safety, American Driving Survey: 2024, Dec. 2025).
 WARRANTY_YEARS = 8
 POWERED_HOURS_PER_DAY = 1.0

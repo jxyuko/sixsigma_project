@@ -7,9 +7,10 @@
 # exponential method), optionally over an Ea range (Monte Carlo). Engine: functions/candidates.py.
 #
 # Ask me everything:   .venv/Scripts/python code/02_run_simulator.py
-# From a file:         .venv/Scripts/python code/02_run_simulator.py --temp 40-105 --hours 2920
+# From a file:         .venv/Scripts/python code/02_run_simulator.py --temp 40-105
 #                          --candidates data/examples/candidates_example.csv
-# Optional:            --target 0.999 --fleet 1000 --replacement-cost 500 --warranty-hours 2920
+# Optional:            --hours 2920 (default: 8 years x 1 h/day, A7) --qty "Gate driver=6, BMS AFE=12"
+#                      --target 0.999 --fleet 1000 --replacement-cost 500 --warranty-hours 2920
 #                      --ea-range [--ea-separate] --details
 
 import argparse
@@ -21,9 +22,9 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.append(str(ROOT))
-from functions.candidates import DEFAULT_FLEET, DEFAULT_TARGET_R, select  # noqa: E402
+from functions.candidates import DEFAULT_FLEET, DEFAULT_MISSION_HOURS, DEFAULT_TARGET_R, select  # noqa: E402
 from functions.interface import (best_reliability_table, key_table, parse_condition,  # noqa: E402
-                                 read_candidates, reliability_table, summary_text)
+                                 parse_quantities, read_candidates, reliability_table, summary_text)
 from functions.library import SLOTS  # noqa: E402
 
 RUNS = ROOT / "results" / "tables" / "runs"
@@ -99,15 +100,19 @@ def ask_candidate(slot, i):
         c["ref_temp_c"] = ask_number("    Temperature that value is stated at, C", c["test_temp_c"])
         c["conf_level"] = ask_number("    Confidence level that value is stated at (0-1)", 0.6)
     c["ea_ev"] = ask_number("    Activation energy Ea in eV, if the report states one (Enter = the setting chosen above)")
-    c["unit_price_usd"] = ask_number("    Unit price in USD (Enter = price list)")
+    c["unit_price_usd"] = ask_number("    Unit price in USD (Enter = the slot's average price)")
+    c["qty_per_vehicle"] = ask_number("    How many of this part does one vehicle use?", 1, kind=int)
     return c
 
 
 def ask_everything():
     print("TASER-EV reliability simulator")
     print("Compare candidate suppliers' parts at YOUR operating condition.\n")
-    inputs = {"condition": ask_condition(),
-              "hours": ask_number("How many hours must the part work at this temperature?", required=True)}
+    inputs = {"condition": ask_condition()}
+    print(f"Mission hours: Enter keeps {DEFAULT_MISSION_HOURS:,.0f} h = the 8-year EV battery warranty "
+          "x 1 powered-on hour per day\n  (8 years: U.S. DOE AFDC, Clean Air Act 207(i)(2); 1 h/day: AAA American "
+          "Driving Survey 2024, 60.4 min/day)")
+    inputs["hours"] = ask_number("How many hours must the part work at this temperature?", DEFAULT_MISSION_HOURS)
     print("\nOptional settings (press Enter to keep the default):")
     inputs["target"] = ask_number("  Required reliability over those hours", DEFAULT_TARGET_R)
     inputs["fleet"] = ask_number("  Vehicles, for warranty exposure", DEFAULT_FLEET, kind=int)
@@ -124,10 +129,11 @@ def ask_everything():
     candidates = []
     for slot in SLOTS:
         k = ask_number(f"  {slot}", 0, kind=int)
-        candidates += [ask_candidate(slot, i) for i in range(1, k + 1)]
+        candidates += [ask_candidate(slot, i) for i in range(1, (k or 0) + 1)]
     if not candidates:
         sys.exit("No candidates entered.")
     inputs["candidates"] = candidates
+    inputs["quantities"] = None
     inputs["details"] = ask("\nShow full details too? (y/n)", "n").lower().startswith("y")
     return inputs
 
@@ -155,7 +161,10 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description="TASER-EV reliability simulator: compare candidate suppliers "
                                              "at your operating condition")
     ap.add_argument("--temp", help="operating temperature in C, or the band the part runs across, min-max")
-    ap.add_argument("--hours", type=float, help="hours the part must work at that temperature")
+    ap.add_argument("--hours", type=float, default=DEFAULT_MISSION_HOURS,
+                    help="hours the part must work at that temperature (default 2920 = 8 years x 1 h/day)")
+    ap.add_argument("--qty", help="parts per vehicle by slot, e.g. \"Gate driver=6, BMS AFE=12\", for rows whose "
+                                  "qty_per_vehicle column is blank (default 1)")
     ap.add_argument("--candidates", help="CSV of candidates (template: data/examples/candidates_example.csv)")
     ap.add_argument("--target", type=float, default=DEFAULT_TARGET_R, help="required reliability (default 0.999)")
     ap.add_argument("--fleet", type=int, default=DEFAULT_FLEET, help="vehicles for warranty exposure (default 1000)")
@@ -170,15 +179,16 @@ def main(argv=None):
     if args.temp is None and args.candidates is None:
         x = ask_everything()
     else:
-        if not (args.temp and args.hours and args.candidates):
-            ap.error("with a file, give --temp, --hours and --candidates (or no arguments to be asked)")
+        if not (args.temp and args.candidates):
+            ap.error("with a file, give --temp and --candidates (or no arguments to be asked)")
         x = {"condition": parse_condition(args.temp), "hours": args.hours, "target": args.target,
+             "quantities": parse_quantities(args.qty) if args.qty else None,
              "ea_range": args.ea_range, "ea_shared": not args.ea_separate,
              "fleet": args.fleet, "replacement_cost": args.replacement_cost, "warranty_hours": args.warranty_hours,
              "candidates": read_candidates(args.candidates), "details": args.details}
     sel = select(x["candidates"], x["condition"], x["hours"], x["target"], warranty_hours=x["warranty_hours"],
                  fleet_size=x["fleet"], replacement_cost=x["replacement_cost"], ea_range=x["ea_range"],
-                 ea_shared=x["ea_shared"])
+                 ea_shared=x["ea_shared"], quantities=x["quantities"])
     report(sel, x["details"])
 
 

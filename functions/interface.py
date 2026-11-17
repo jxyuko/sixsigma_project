@@ -10,7 +10,7 @@ import pandas as pd
 
 # Columns a candidates file may have (data/examples/candidates_example.csv); see data/codebook.md
 CANDIDATE_COLUMNS = ("slot", "name", "supplier", "test_temp_c", "test_hours", "sample_size", "failures",
-                     "fit", "mttf_hours", "ref_temp_c", "conf_level", "ea_ev", "unit_price_usd")
+                     "fit", "mttf_hours", "ref_temp_c", "conf_level", "ea_ev", "unit_price_usd", "qty_per_vehicle")
 REQUIRED_COLUMNS = ("slot", "name", "test_temp_c")
 GROUP_COLUMNS = ("test_temp_c", "test_hours", "sample_size", "failures")
 
@@ -25,6 +25,18 @@ def parse_condition(text):
         lo, hi = sorted(float(x) for x in m.groups())
         return lo if lo == hi else (lo, hi)
     return float(text)
+
+
+# parse_quantities(): parts per vehicle by slot, "Gate driver=6, BMS AFE=12" -> {"Gate driver": 6, ...}
+# (A10); slot names are matched to the six slots by select()
+def parse_quantities(text):
+    out = {}
+    for item in filter(None, (x.strip() for x in text.split(","))):
+        if "=" not in item:
+            raise ValueError(f"quantity {item!r}: write slot=number, e.g. Gate driver=6")
+        slot, n = (x.strip() for x in item.split("=", 1))
+        out[slot] = int(n)
+    return out
 
 
 def describe_condition(condition):
@@ -117,6 +129,8 @@ def summary_text(sel):
     lines = [f"Condition: {describe_condition(s['condition'])} for {hours:,.0f} h | target: R({hours:,.0f} h) "
              f">= {target} with {conf:.0%} confidence",
              f"           (at most {s['target_fit']:.0f} FIT for the whole system)",
+             *([f"Mission: {hours:,.0f} h = 8-year EV battery warranty x 1 powered-on hour per day (the default)"]
+               if s.get("default_mission") else []),
              "Activation energy for parts whose report states none: "
              + (f"0.5-0.9 eV range (Monte Carlo, {s['n_draws']:,} draws, "
                 + ("one draw shared by all parts)" if s["ea_shared"] else "a separate draw per part)")
@@ -125,6 +139,15 @@ def summary_text(sel):
              + ("replaces the part at its unit price" if s["replacement_cost"] is None
                 else f"costs {money(s['replacement_cost'])} (your value)"),
              f"{p['n_combinations']:,} combinations evaluated ({p['n_meeting_target']:,} meet the target)"]
+    t = sel.candidates
+    if (t["qty_per_vehicle"] != 1).any():
+        parts = []
+        for slot, g in t.groupby("slot", observed=True, sort=False):
+            qs = g["qty_per_vehicle"].unique()
+            parts.append(f"{slot} {qs[0]}" if len(qs) == 1 else
+                         f"{slot}: " + ", ".join(f"{n} {q}" for n, q in zip(g["name"], g["qty_per_vehicle"])))
+        lines.append("Parts per vehicle: " + "; ".join(parts)
+                     + ". System rate, failures and costs count every part.")
     lines += [f"Note: {w}" for w in sel.warnings]
 
     lines += ["", "BEST COMBINATIONS", "-" * 84, "Most reliable (lowest estimated failure rate)"]
@@ -158,9 +181,14 @@ def best_parts_table(sel):
 def key_table(sel):
     t = sel.candidates
     fleet = sel.settings["fleet_size"]
+    multi = (t["qty_per_vehicle"] != 1).any()          # A10: quantities shown only when one isn't 1
     return pd.DataFrame([{
         "Slot": r["slot"], "Rank": r["rank_in_slot"], "Part": r["name"],
-        "FIT (2.5th-97.5th %)": fit_range(r["fit_estimate"], r["fit_lower"], r["fit_upper"]),
+        ("FIT per part (2.5th-97.5th %)" if multi else "FIT (2.5th-97.5th %)"):
+            fit_range(r["fit_estimate"], r["fit_lower"], r["fit_upper"]),
+        **({"Per vehicle": int(r["qty_per_vehicle"]),
+            "FIT per vehicle": fit_range(r["fit_per_vehicle_estimate"], r["fit_per_vehicle_lower"],
+                                         r["fit_per_vehicle_upper"])} if multi else {}),
         **({"FIT over Ea range": (f"{num(r['fit_ea_lower'])} - {num(r['fit_ea_upper'])}"
                                   if r["ea_source"] != "report" else f"fixed (report Ea {r['ea_ev']:g} eV)")}
            if sel.settings["ea_range"] else {}),

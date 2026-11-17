@@ -128,7 +128,8 @@ one candidate entered in report-summary form (UCC21750's published 0.2 FIT at 55
 | `ref_temp_c` | summary form, optional | °C | Temperature the FIT/MTTF refers to (default `test_temp_c`) |
 | `conf_level` | summary form, optional | fraction | Confidence level of the FIT/MTTF (default 0.60, A11) |
 | `ea_ev` | optional | eV | Activation energy stated in the report (default: the library's 0.7 eV, A12) |
-| `unit_price_usd` | optional | USD | Purchase price (default: Sheet2 price for the part, else the slot average, A14) |
+| `unit_price_usd` | optional | USD | Purchase price (default: the Sheet2 average for the slot, A14) |
+| `qty_per_vehicle` | optional | count | How many of this part one vehicle uses (default 1, A10); may differ between candidates of a slot |
 | `source` | no | | Where the values come from (not read by the code) |
 
 ## `data/prices.csv`: unit prices (Sheet2), used for cost
