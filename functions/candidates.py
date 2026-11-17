@@ -13,8 +13,8 @@
 #   OR report summary: fit or mttf_hours, plus ref_temp_c (default test_temp_c),
 #                      conf_level (default 0.60) and failures (default 0)   (A11, E15)
 #   ea_ev (optional): activation energy stated in the report; else the library default, 0.7 eV (A12)
-#   unit_price_usd (optional): purchase price; else Sheet2's price for that part, else the Sheet2
-#                  average for the slot (A14)
+#   unit_price_usd (optional): purchase price; else the Sheet2 average price for the candidate's slot
+#                  (component type), whoever makes it (A14)
 
 import re
 from dataclasses import dataclass, field
@@ -51,22 +51,25 @@ def _key(text):
     return re.sub(r"[^A-Z0-9]", "", str(text).upper())
 
 
-# price_for(): A14. The candidate's own price if given; else the Sheet2 price of a matching part
-# number (same part, or one part number is the start of the other, e.g. ADuM4135 / ADUM4135WBRWZ);
-# else the Sheet2 average for the slot.
+# slot_of(): the slot name as SLOTS spells it, ignoring case, spaces and punctuation
+# ("gate driver", "Gate-Driver" -> "Gate driver"), so a typed slot always finds its average price
+def slot_of(text):
+    for slot in SLOTS:
+        if _key(slot) == _key(text):
+            return slot
+    return None
+
+
+# price_for(): A14. The candidate's own price if given; else the Sheet2 average price for its slot
+# (component type). Every unpriced candidate of a slot gets the same price, whether or not its maker is
+# in our library, so cost differences come only from reliability and from prices the user enters.
 def price_for(slot, name, unit_price=None, prices=None):
     if unit_price is not None and pd.notna(unit_price):
         if float(unit_price) < 0:
             raise ValueError(f"{name}: unit price can't be negative")
         return float(unit_price), "entered by user"
     prices = load_prices() if prices is None else prices
-    in_slot = prices[prices["slot"] == slot]
-    key = _key(name)
-    for _, r in in_slot[in_slot["kind"] == "part"].iterrows():
-        pk = _key(r["part"])
-        if len(key) >= 6 and len(pk) >= 6 and (key == pk or key.startswith(pk) or pk.startswith(key)):
-            return float(r["unit_price_usd"]), f"Sheet2 price of {r['part']}"
-    avg = in_slot[in_slot["kind"] == "slot average"]
+    avg = prices[(prices["slot"] == slot) & (prices["kind"] == "slot average")]
     if avg.empty:
         raise ValueError(f"{name}: no price given and no Sheet2 average for {slot}")
     return float(avg["unit_price_usd"].iloc[0]), f"Sheet2 average for {slot}"
@@ -148,6 +151,7 @@ def clean_candidates(candidates, library=None, prices=None):
     rows, names = [], set()
     for c in candidates:
         c = dict(c)
+        c["slot"] = slot_of(c.get("slot")) or c.get("slot")
         if c.get("slot") not in SLOTS:
             raise ValueError(f"{c.get('name')}: slot must be one of {', '.join(SLOTS)}")
         if not c.get("name"):

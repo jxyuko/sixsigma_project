@@ -108,10 +108,10 @@ def test_default_exposure_is_per_1000_vehicles_parts_only():
     sel = select([raw("UCC21750QDWRQ1", 1000)], 55, 1000)
     r = row(sel, "UCC21750QDWRQ1")
     assert sel.settings["fleet_size"] == 1000
-    assert r["unit_price_usd"] == 8.03 and r["price_source"] == "Sheet2 price of UCC21750QDWRQ1"
-    assert r["cost_per_failure"] == 8.03 and r["cost_basis"] == "replacement at unit price"
-    assert r["purchase_cost"] == pytest.approx(8030)
-    assert r["warranty_cost_estimate"] == pytest.approx(8.03 * r["warranty_failures_estimate"])
+    assert r["unit_price_usd"] == 6.6 and r["price_source"] == "Sheet2 average for Gate driver"
+    assert r["cost_per_failure"] == 6.6 and r["cost_basis"] == "replacement at unit price"
+    assert r["purchase_cost"] == pytest.approx(6600)
+    assert r["warranty_cost_estimate"] == pytest.approx(6.6 * r["warranty_failures_estimate"])
 
 
 def test_total_cost_is_purchase_plus_warranty_in_every_case():
@@ -122,11 +122,14 @@ def test_total_cost_is_purchase_plus_warranty_in_every_case():
     assert r["purchase_cost"] == 1000.0
 
 
-def test_prices_from_sheet2():
+def test_prices_are_the_slot_average():
+    # A14: no price entered -> the Sheet2 average of the slot, even for a part listed in Sheet2
     from functions.candidates import price_for
-    assert price_for("Gate driver", "ADuM4135") == (9.33, "Sheet2 price of ADUM4135WBRWZ")     # prefix match
-    price, source = price_for("ECU MCU", "My MCU")                       # not in Sheet2 -> slot average
+    assert price_for("Gate driver", "ADuM4135") == (6.6, "Sheet2 average for Gate driver")
+    price, source = price_for("ECU MCU", "My MCU")                       # maker not in our library
     assert price == pytest.approx(15.853333, rel=1e-6) and source == "Sheet2 average for ECU MCU"
+    for slot, avg in (("BMS AFE", 15.941667), ("Digital isolator", 3.42), ("Temperature sensor", 1.75)):
+        assert price_for(slot, "Unknown part")[0] == pytest.approx(avg, rel=1e-6)
     assert price_for("Current sensor", "Any sensor")[0] == 17.35          # stated average, no rows listed
     assert price_for("Gate driver", "x", unit_price=4.5) == (4.5, "entered by user")
     with pytest.raises(ValueError):
@@ -322,3 +325,12 @@ def test_ea_override_for_sensitivity():
     assert row(base, "a")["af_eff"] == pytest.approx(accel_factor(55, 125, 0.7))
     assert row(hi, "a")["af_eff"] == pytest.approx(accel_factor(55, 125, 0.9))
     assert row(hi, "b")["af_eff"] == row(base, "b")["af_eff"] == pytest.approx(accel_factor(55, 125, 0.6))
+
+
+def test_slot_spelling_finds_the_right_average():
+    # A typed slot in any case or spacing maps to its slot and its average price
+    sel = select([raw("x", 1000, slot="gate DRIVER"), raw("y", 1000, slot="digital-isolator")], 55, 1000)
+    got = dict(zip(sel.candidates["name"], zip(sel.candidates["slot"], sel.candidates["unit_price_usd"])))
+    assert got["x"] == ("Gate driver", 6.6) and got["y"] == ("Digital isolator", 3.42)
+    with pytest.raises(ValueError):
+        select([raw("z", 1000, slot="Capacitor")], 55, 1000)
