@@ -126,3 +126,28 @@ Assumption and equation numbers (A#, E#) refer to ROADMAP.md.
 - The simulator prints the 60% upper bound in the details. It is the suppliers' convention and
   reproduces TI's published FIT (6.21 vs 6.19 for the C2000). Discuss why we rank on the estimate and
   check the target at 95% instead.
+
+## Why the exponential is the final model (references for the report)
+
+- Lesson 12: the exponential needs only a nearly constant failure rate over the period we care about, and
+  is fine when we only need the average failure rate for a period (our 8-year warranty).
+- JEDEC JESD85A (2021), *Methods for Calculating Failure Rates in Units of FITs*: the industry method behind
+  every supplier FIT we use. It applies to failure mechanisms with a constant failure rate, with the
+  chi-square bound and Arrhenius acceleration (summaries: https://standards.globalspec.com/std/14580367/jesd85a ;
+  Vishay reliability report, https://www.vishay.com/docs/72559/72559.pdf). Using the same model keeps us
+  consistent with how the data were produced.
+- SEMATECH (2000): the exponential works with few or zero failures; also the source of the lognormal and
+  Weibull shapes we tried.
+- What trying the other models showed (R8): the cheapest pick meeting the target is the same under every
+  model; the Weibull β 0.8 gives the same three picks; the lognormal models and the Weibull β 2.4 move
+  only the MCU pick (C2000 → RH850), because the RH850's 150 °C test is the longest in equivalent time.
+  Wear-out shapes predict almost no failures within a 2,920 h mission, far shorter than the ~78,000 h
+  equivalent test time.
+
+## Where the rough-draft numbers are
+
+- Results: `reports/rough_draft/results/key_numbers.md`, tables r1–r8, figures 1–3
+  (`analysis/rough_draft/01_results.py`).
+- Financial impacts: `reports/rough_draft/financial/key_numbers_financial.md`, tables fin_1–fin_6,
+  figure F1 (`analysis/rough_draft/02_financial_impacts.py`).
+- Case-study assumptions (quantities, recall trigger, recall cost): ROADMAP A17–A19.

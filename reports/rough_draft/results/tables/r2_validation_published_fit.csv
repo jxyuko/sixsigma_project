@@ -1,0 +1,11 @@
+slot,supplier,part,ref_temp_c,ref_conf_level,fit_published,fit_published_status,fit_calculated,ratio,verdict,af_published,af_calculated
+ECU MCU,Renesas Electronics,R7F7016903AFP-C,55,0.6,0.0011,verified,15.30437470394858,13913.067912680526,calculated higher than published,259.1825,259.1825292859798
+ECU MCU,Texas Instruments,F280049CPZQR,55,0.6,6.19,not checked,6.211035393925177,1.0033982865791884,reproduced (within 2x),77.6454,77.6453923295056
+BMS AFE,Analog Devices,LTC6811-1,55,0.6,33.95,verified,0.3180767970798048,0.009368977822674662,calculated lower than published,,77.6453923295056
+BMS AFE,Texas Instruments,BQ79656PAPRQ1,55,0.6,0.1,not checked,0.11597090399239213,1.1597090399239212,reproduced (within 2x),77.6454,77.6453923295056
+Digital isolator,Analog Devices,ADuM141E,55,0.6,20.23,not checked,0.4479174229653314,0.02214124680995212,calculated lower than published,,77.6453923295056
+Digital isolator,Texas Instruments,ISO7741QDWRQ1,55,0.6,0.2,not checked,0.13520040383179055,0.6760020191589527,reproduced (within 2x),77.6454,77.6453923295056
+Temperature sensor,Texas Instruments,TMP4719QDGSRQ1,55,0.6,0.1,not checked,0.11597090399239213,1.1597090399239212,reproduced (within 2x),77.6454,77.6453923295056
+Gate driver,Analog Devices,ADuM4135,55,0.6,11.28,not verified,0.37269350835200354,0.033040204641135065,calculated lower than published,,77.6453923295056
+Gate driver,Texas Instruments,UCC21750QDWRQ1,55,0.6,0.2,not checked,0.13520040383179055,0.6760020191589527,reproduced (within 2x),77.6454,77.6453923295056
+Current sensor,Texas Instruments,TMCS1101A4UQDRQ1,55,0.6,1.7,not checked,1.6923802163283865,0.9955177743108157,reproduced (within 2x),77.6454,77.6453923295056

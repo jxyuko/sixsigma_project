@@ -8,6 +8,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+# The Preliminary Results scripts are kept as submitted (method v3, team decision 2026-11-17); they call
+# functions removed in method v4, so these tests are skipped. The rough-draft analysis is tested in
+# tests/test_rough_draft.py.
+pytest.skip("Preliminary Results scripts are frozen at method v3", allow_module_level=True)
+
 from functions.candidates import select
 
 ROOT = Path(__file__).resolve().parents[1]

@@ -317,6 +317,9 @@ Each assumption has an ID so code comments and the report can cite it.
 | A14 | **Cost basis for warranty exposure:** exposure is reported per 1,000 vehicles unless the user gives a fleet size. A candidate's unit price is the user's, else the Sheet2 average for its slot (component type), whoever makes it (team decision 2026-11-16: every unpriced candidate of a slot costs the same, so users' parts from makers outside our library are priced like ours; a typed slot is matched ignoring case and spacing). Each warranty failure is a replacement of the failed component; its cost is the user's replacement cost, else the part's unit price. Total cost = purchase (vehicles × unit price) + expected warranty cost. | The user may not know fleet size or replacement cost. Per-1,000 figures are readable without them, and Sheet2 prices are sourced (distributor links). Pricing a replacement at the component's own price leaves out labour and logistics, so it understates the full warranty cost. | `[DECIDED]` (team, 2026-10-31) |
 | A15 | **Prices of library candidates in the financial analysis** are the library's Sheet2 match: the exact part, an orderable variant, or a **family proxy** (C2000 priced as F2800157, RH850 as R7F7016843); TMCS1101 has none and uses the Sheet2 current-sensor average. | These are the only sourced prices in our data. The MCU proxy prices drive most of the purchase difference, so the purchase saving is stated as depending on them (Section 10). | `[DEFAULT]` |
 | A16 | **Shapes for the lognormal and Weibull alternatives:** lognormal σ = 0.5 (wear-out) and 1.5 (defects); Weibull β = 1.2/σ = 2.4 and 0.8. Each test fixes the scale through its fraction failed at the equivalent test time T·AF (E24–E25). | Zero-failure tests can't estimate a shape. Source: Blish & Durrant, *Semiconductor Device Reliability Failure Models*, International SEMATECH #00053955A-XFR (2000), p. 29: "Typical sigma values are: ~0.5 for wearout; ~1.5 for defects", and β = 1.2/σ. Time scaling by AF assumes the same Arrhenius acceleration for every model. | `[DEFAULT]` |
+| A17 | **Case-study quantities per vehicle** (rough draft): one 400 V pack of 96 cells in series and one three-phase traction inverter. ECU MCU 1; BMS AFE 96 ÷ cells per chip (BQ79656 16 → 6, LTC6811-1 12 → 8); digital isolator 2; temperature sensor 2; gate driver 6 (one per switch; TI TIDA-010025, NXP RDGD31603PHSEVM); current sensor 3 (one per phase; TI TIDA-00366). Prices: each part's Sheet2 price entered as the user's (A15). | All six slots with realistic counts; the AFE counts show why quantity belongs to each candidate (A10). MCU, isolator and temperature-sensor counts are team assumptions. | `[ASSUMPTION]` (team, 2026-11-17) |
+| A18 | **Recall model:** a recall campaign is per part type, triggered once that part's field failures in one model year's fleet reach k. N = 100,000 vehicles; k = 10 (5 and 20 as sensitivity); fleets 10,000 and 500,000 as sensitivity. | A less reliable combination has more field failures, so a higher chance of a recall. No regulation sets a failure count for a recall, so k is an assumption shown at three values. | `[ASSUMPTION]` (team, 2026-11-17) |
+| A19 | **Cost per recalled vehicle:** $440 base (NADA average recall repair reimbursement, quoted by WardsAuto), $205 low (Ford door-latch recall: $267 M / 1.3 M vehicles), $850 high (Atlas Copco whitepaper, total recall cost per vehicle). | A hardware fault needs a dealer repair (parts + labour); no primary source gives one figure, so the base sits inside a sourced range. | `[ASSUMPTION]` (team, 2026-11-17) |
 
 ## 7. Equations
 
@@ -443,6 +446,14 @@ Poisson outcomes of P(f₁, f₂) · 1[the E21 one-sided p ≤ α], computed exa
 **E29 · Failures needed for a comparison.** The smallest μ₁ (better supplier's expected failures,
 equal device-hours) at which E28 reaches 80% for a true rate ratio ρ; device-hours = μ₁/λ.
 
+**E30 · Chance of a recall** (A18). Field failures of part type s in a fleet of N vehicles over the warranty are
+Poisson with mean μ_s = N (1 − e^(−q_s λ_s t_w)); P(recall of s) = P(X ≥ k) = 1 − Σ_{j<k} e^(−μ_s) μ_s^j / j!.
+P(at least one recall) = 1 − Π_s (1 − P_s) (independent part types, A4).
+
+**E31 · Expected recall cost** (A19): Σ_s P_s × N × C_recall. Cost of poor quality COPQ = warranty replacements
+(E12) + expected recall cost; total = purchase + COPQ. Every term at the estimate and at the 2.5th / 97.5th
+percentile failure rates.
+
 ## 8. Calculation engine
 
 v4 has **no random draws in the simulator**: every output is a closed-form estimate and its 95%
@@ -550,7 +561,34 @@ Recitation 12 planning (E27) and the power of the exact test (E28–E29).
 not to rank suppliers: zero-failure tests can only separate suppliers whose rates differ by about
 10× or more, and a 2× difference needs about 20 failures in each test.
 
+### 9d. Rough draft results (report 2, method v4)
+
+`analysis/rough_draft/01_results.py` → `reports/rough_draft/results/` (tables r1–r8, figures 1–3,
+`key_numbers.md`). Case study: the ten usable library parts (one per family), all six slots, A17 quantities,
+Sheet2 prices; baseline 55 °C, 2,920 h, Ea 0.7 eV, exponential, the estimate. R1 parts on one basis; R2 our
+60% bound vs published FITs; R3 known-truth coverage; R4 the three picks and the least reliable combination;
+R5 temperature sweep; R6 the sensitivity table (one change per row: rate percentiles, Ea 0.5 / 0.9 / range,
+mission ½ / ×2 / TI's 15,768 h, 40–105 °C band, target 0.9999, quantities 1, four life models); R7 what the
+tests can demonstrate (ppm); R8 the life models tried. Notes for the report: `docs/report_draft_notes.md`.
+
+**First results (2026-11-17):** most reliable = safest = all-TI combination, system FIT 10.1 (0–53.5), 95%
+maximum 43.5 ≤ 343, so it meets the target; cheapest meeting the target swaps in the LTC6811-1; least reliable
+(RH850 + ADI parts) 19.7 FIT, 1.95×. All 16 combinations meet 0.999 at 55 °C; the target holds up to 80 °C
+(after) and 70 °C (before). The most reliable pick is unchanged in every exponential sensitivity row; the
+lognormal and Weibull β 2.4 move only the MCU pick to the RH850 (its 150 °C test is longest in equivalent
+time). Coverage of the course interval 98.4%.
+
 ## 10. Warranty exposure, cost and Financial Impacts
+
+### 10b. Rough draft financial impacts (report 2)
+
+`analysis/rough_draft/02_financial_impacts.py` → `reports/rough_draft/financial/`. Before = least reliable
+combination (a choice without the simulator), after = the simulator's most reliable pick, per 100,000 vehicles
+over 2,920 h: purchase, warranty replacements (E12) and expected recall cost (E30–E31, A18–A19). First results
+(55 °C, k = 10, $440): after is $1.25 M cheaper to buy; COPQ before $114,578 → after $133 (97.5th percentile case:
+$47.0 M → $12.5 M); over a 40–105 °C band the COPQ saving is $26.5 M (estimate). The most reliable pick costs
+$0.5 M more to buy than the cheapest combination meeting the target, which its avoided COPQ repays only at
+the 97.5th percentile with a recall cost above $4,633 per vehicle.
 
 **How warranty exposure is calculated** (E12, A14):
 1. Each part's failure rate λᵢ at the user's condition comes from the simulator (E4): the estimate
@@ -705,10 +743,14 @@ analysis/                  report analyses, kept apart from the simulator (they 
   common.py                   shared baseline, candidates and prices
   01_preliminary_results.py   Section 9 → reports/preliminary_results/
   02_significance.py          Sections 9b, 9c → reports/preliminary_results/ (sig_*)
-  03_financial_impacts.py     Section 10 → reports/financial_impacts/
+  03_financial_impacts.py     Section 10 → reports/financial_impacts/  (the three above are frozen at v3)
+  rough_draft/case_study.py   rough-draft inputs (A17–A19)
+  rough_draft/01_results.py   Section 9d → reports/rough_draft/results/
+  rough_draft/02_financial_impacts.py  Section 10b → reports/rough_draft/financial/
   plots.py                    every report figure (and the flowchart), drawn with plotnine
 reports/preliminary_results/  tables/, figures/, key_numbers.md, key_numbers_significance.md
 reports/financial_impacts/    tables/, key_numbers_financial.md
+reports/rough_draft/          results/ and financial/: tables/, figures/, key numbers (report 2)
 data/
   components.csv, prices.csv, codebook.md, examples/candidates_example.csv, reference/, raw/
 tests/
@@ -831,3 +873,4 @@ The full table is in `data/codebook.md`. The headlines:
 | 2026-11-16 | Polish, one item at a time. (1) Mission hours: 8-year source (secondary) and TI's 15-year / ~12% duty-cycle automotive mission profile (SPRABX4C) added to A7 as a report note. (2) Target: an under-1 ppm system target was checked and cannot be demonstrated by any library part or combination at 95% confidence, so 0.999 is kept as a labelled assumption with the ppm sources (A13). (3) Prices: an unpriced candidate always gets its slot's Sheet2 average (part-number matching removed; slot names matched ignoring case and spacing; A14). New `docs/report_draft_notes.md` for the second report (rough draft); Section 9 marked superseded. 8-year source: DOE AFDC (CAA 207(i)(2)); zero-defects definition and why HTOL tests can't demonstrate under 1 ppm added to the notes. 142 tests pass. |
 | 2026-11-17 | Simulator polish: (1) quantity per slot (A10 now `[DECIDED]`): `select(..., quantities=)`, a prompt per slot, `--qty`, or a `qty_per_vehicle` column; λ_sys = Σ qλ, failures and costs × q, the per-part target check uses q. (2) Input notes: condition above a part's test temperature, test smaller than one AEC-Q100 lot (77 × 1,000 h), report value without a confidence level (60% assumed). (3) Mission hours default to 2,920 h (A7) with its sources in the prompt and summary; `--hours` optional. New `tests/test_quantity_warnings.py`; 156 tests pass. |
 | 2026-11-17 | Quantity per candidate (team decision): each candidate keeps its own `qty_per_vehicle` (it may differ within a slot), so the "different quantities in one slot" error is removed; ask-me mode asks it per candidate; `--qty` fills blank rows. Ranking fix: candidates of a slot are ranked by FIT per vehicle (q × FIT), shown next to FIT per part, so the best-part table agrees with the combinations; with all quantities 1 the output is unchanged. 157 tests pass. |
+| 2026-11-17 | Rough draft analysis (report 2), new folders only; the Preliminary Results and Financial Impacts files and scripts are restored to their committed (v3) state and left unchanged (`tests/test_analysis.py` skipped for them). New `analysis/rough_draft/` (case_study.py, 01_results.py, 02_financial_impacts.py) → `reports/rough_draft/` (Sections 9d, 10b); A17 case-study quantities, A18 recall model, A19 recall cost; E30 chance of a recall, E31 expected recall cost (`functions/finance.py`: recall_probability(), recall_risk(); combination_costs() now uses quantities); figures in `analysis/plots.py` (rd_*). New tests `tests/test_recall.py`, `tests/test_rough_draft.py`; 165 pass, 1 skipped. |

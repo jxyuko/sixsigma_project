@@ -245,3 +245,81 @@ def sig_2b_max_temp(parts, sysrows, path, t_ref=55):
          + theme_taser(9, 6, "x"))
     return save(p, path)
 
+
+
+# --- Rough draft (analysis/rough_draft/, method v4: course exponential method) -------------------------
+
+def rd_fig1_parts(t, path, floor=1e-3):
+    """FIT per part at the baseline: estimate with its 2.5th-97.5th percentile and the 95% maximum used
+    for the target check. A lower bound of 0 (zero failures) is drawn at the axis edge."""
+    d = t.assign(label=t["slot"] + ": " + t["part"],
+                 lower_plot=t["fit_lower"].clip(lower=floor))
+    d = slot_order(d, "label", "fit_estimate", ascending=False)
+    p = (ggplot(d, aes(x="label", color="supplier"))
+         + geom_linerange(aes(ymin="lower_plot", ymax="fit_upper"), size=1.1)
+         + geom_point(aes(y="fit_estimate"), size=3)
+         + geom_point(aes(y="fit_95_max"), shape="|", size=6)
+         + coord_flip() + scale_y_log10()
+         + scale_color_manual(values=SUPPLIER_COLORS, limits=list(SUPPLIER_COLORS))
+         + labs(x="", y="FIT per part at 55 C (log scale): estimate (dot), 2.5th-97.5th percentile (line), "
+                        "95% maximum (|)",
+                title="Figure 1. Every candidate on one basis: 55 C, 2,920 h",
+                subtitle="Lines reaching the left edge: zero failures, so the lower bound is 0")
+         + theme_taser(8.5, 5.4, "x"))
+    return save(p, path)
+
+
+def rd_fig2_temperature(sw, path, target_fit):
+    """System FIT vs operating temperature for the named combinations: estimate (line) and the 95% maximum
+    used for the target check (dashed). The 2.5th percentile is 0 for zero-failure parts, so no band."""
+    order = list(dict.fromkeys(sw["system"]))
+    colors = [BLUE, ORANGE, "#1baf7a"][:len(order)]
+    p = (ggplot(sw, aes(x="temperature_c", color="system"))
+         + geom_line(aes(y="fit_estimate"), size=1.2)
+         + geom_line(aes(y="fit_95_max"), linetype="dashed", size=0.8)
+         + geom_hline(yintercept=target_fit, color=INK)
+         + annotate("text", x=sw["temperature_c"].min(), y=target_fit * 1.5,
+                    label=f"target: at most {target_fit:.0f} FIT for the system", color=INK, size=8, ha="left")
+         + scale_y_log10(labels=lambda v: [f"{x:,.0f}" if x >= 1 else f"{x:g}" for x in v])
+         + scale_color_manual(values=colors, limits=order)
+         + labs(x="Operating temperature (C)", y="System FIT (log scale)",
+                title="Figure 2. System failure rate vs operating temperature",
+                subtitle="Solid: estimate; dashed: 95% maximum, which must stay under the target line")
+         + theme_taser(8, 5, "y"))
+    return save(p, path)
+
+
+def rd_fig3_sensitivity(sens, path, base_fit):
+    """Most reliable system's FIT under each sensitivity row (one change at a time). Rows with a FIT of 0
+    (the 2.5th percentile) and the life-model rows (a different quantity, the AFR) stay in the table only."""
+    d = sens[(sens["system_fit_estimate"] > 0) & ~sens["setting"].str.startswith("Life model")].copy()
+    d["setting"] = pd.Categorical(d["setting"], categories=list(d["setting"])[::-1], ordered=True)
+    d["pick"] = np.where(d["same_most_reliable"], "same most reliable pick", "different pick")
+    p = (ggplot(d, aes(x="setting", y="system_fit_estimate", color="pick"))
+         + geom_hline(yintercept=base_fit, color=INK_2, linetype="dashed")
+         + geom_point(size=3.5)
+         + coord_flip() + scale_y_log10()
+         + scale_color_manual(values=[BLUE, ORANGE], limits=["same most reliable pick", "different pick"])
+         + labs(x="", y="System FIT of the most reliable combination (log scale; 97.5th percentile row at its bound)",
+                title="Figure 3. Sensitivity: one setting changed at a time",
+                subtitle="Dashed: baseline (55 C, 2,920 h, Ea 0.7 eV, exponential, estimate)")
+         + theme_taser(8.5, 6, "x"))
+    return save(p, path)
+
+
+def rd_fin1_recall(curve, path, k, fleet):
+    """P(at least one recall) of the before and after combinations vs operating temperature (E30), at the
+    estimate (line) and with every part at its 97.5th percentile (dashed)."""
+    order = list(dict.fromkeys(curve["system"]))
+    d = curve.assign(p_est=100 * curve["p_any_recall_estimate"], p_hi=100 * curve["p_any_recall_upper"])
+    p = (ggplot(d, aes(x="temperature_c", color="system"))
+         + geom_line(aes(y="p_est"), size=1.2)
+         + geom_line(aes(y="p_hi"), linetype="dashed", size=0.8)
+         + scale_y_continuous(limits=(0, 100))
+         + scale_color_manual(values=[BLUE, ORANGE], limits=order)
+         + labs(x="Operating temperature (C)", y="Chance of at least one recall, %",
+                title="Figure F1. Recall risk: least vs most reliable combination",
+                subtitle=f"{fleet:,} vehicles, 2,920 h; recall at {k} field failures of one part type\n"
+                         "Solid: estimate; dashed: every part at its 97.5th percentile failure rate")
+         + theme_taser(8, 5, "y"))
+    return save(p, path)
